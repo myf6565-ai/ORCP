@@ -1,0 +1,18 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: event-cleaning-job
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: event-cleaning-job
+          image: your-registry/event-cleaning-job:latest
+          args:
+            - "--bootstrapServers=$(KAFKA_BOOTSTRAP_SERVERS)"
+            - "--sourceTopic=$(ORCP_TOPIC_RAW)"
+            - "--sinkTopic=$(ORCP_TOPIC_STANDARD)"
+          envFrom:
+            - configMapRef:
+                name: orcp-config

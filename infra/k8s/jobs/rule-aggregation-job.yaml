@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rule-aggregation-job
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: rule-aggregation-job
+          image: your-registry/rule-aggregation-job:latest
+          args:
+            - "--bootstrapServers=$(KAFKA_BOOTSTRAP_SERVERS)"
+            - "--sourceTopic=$(ORCP_TOPIC_STANDARD)"
+            - "--sinkTopic=$(ORCP_TOPIC_RESULT)"
+            - "--threshold=3"
+          envFrom:
+            - configMapRef:
+                name: orcp-config
