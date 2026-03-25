@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orcp-config
+data:
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  ORCP_TOPIC_RAW: raw-events
+  ORCP_TOPIC_STANDARD: standard-events
+  ORCP_TOPIC_RESULT: result-events

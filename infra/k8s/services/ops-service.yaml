@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ops-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ops-service
+  template:
+    metadata:
+      labels:
+        app: ops-service
+    spec:
+      containers:
+        - name: ops-service
+          image: your-registry/ops-service:latest
+          ports:
+            - containerPort: 8084
+          envFrom:
+            - configMapRef:
+                name: orcp-config
+            - secretRef:
+                name: orcp-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ops-service
+spec:
+  selector:
+    app: ops-service
+  ports:
+    - port: 8084
+      targetPort: 8084

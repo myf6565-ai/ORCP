@@ -1,0 +1,10 @@
+{
+  "eventId": "evt-10001",
+  "bizKey": "user-001",
+  "eventType": "ORDER_CREATED",
+  "eventTime": "2026-03-25T10:00:00Z",
+  "payload": {
+    "amount": 120.5,
+    "currency": "CNY"
+  }
+}

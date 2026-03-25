@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: config-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+orcp:
+  kafka:
+    consumer:
+      group-id: ${ORCP_KAFKA_GROUP:orcp-default-group}
+    topics:
+      raw-events: ${ORCP_TOPIC_RAW:raw-events}
+      standard-events: ${ORCP_TOPIC_STANDARD:standard-events}
+      result-events: ${ORCP_TOPIC_RESULT:result-events}
+      dead-letter-events: ${ORCP_TOPIC_DLT:dead-letter-events}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n"
