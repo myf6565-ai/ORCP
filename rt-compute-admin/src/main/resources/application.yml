@@ -1,0 +1,10 @@
+server:
+  port: ${RT_ADMIN_PORT:8081}
+spring:
+  application:
+    name: rt-compute-admin
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

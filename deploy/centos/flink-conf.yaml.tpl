@@ -1,0 +1,9 @@
+jobmanager.rpc.address: ${JOBMANAGER_RPC_ADDRESS}
+rest.port: ${FLINK_REST_PORT}
+parallelism.default: ${FLINK_PARALLELISM}
+state.backend: rocksdb
+state.checkpoints.dir: ${CHECKPOINT_DIR}
+state.savepoints.dir: ${SAVEPOINT_DIR}
+execution.checkpointing.interval: 30s
+metrics.reporters: prom
+metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory

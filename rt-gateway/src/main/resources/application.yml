@@ -1,0 +1,19 @@
+server:
+  port: ${RT_GATEWAY_PORT:8080}
+spring:
+  application:
+    name: rt-gateway
+  cloud:
+    gateway:
+      routes:
+        - id: admin
+          uri: ${RT_ADMIN_URI:http://localhost:8081}
+          predicates:
+            - Path=/api/**
+          filters:
+            - StripPrefix=1
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

@@ -1,0 +1,12 @@
+[Unit]
+Description=Flink TaskManager
+After=network.target
+
+[Service]
+Type=forking
+User=flink
+ExecStart=/opt/flink/bin/taskmanager.sh start
+ExecStop=/opt/flink/bin/taskmanager.sh stop
+
+[Install]
+WantedBy=multi-user.target
