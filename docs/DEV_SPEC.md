@@ -56,7 +56,7 @@
 | Nacos Client | 2.2.3 | 随 Spring Cloud Alibaba 2021.0.5.0 引入 |
 | MySQL（本地明细） | 8.0.36 | 作为 Flink JDBC 维表源；也可降至 5.7.44 |
 | **OceanBase** | **3.2.3（MySQL 模式）** | 生产约束 |
-| **OceanBase JDBC 驱动** | **com.oceanbase:oceanbase-client:2.4.7** | OB 3.x 官方推荐；兼容性优于纯 MySQL 驱动 |
+| **OceanBase JDBC 驱动** | **com.oceanbase:oceanbase-client:2.4.14** | OB 3.x 官方推荐；兼容性优于纯 MySQL 驱动（`2.4.7` 未发布到 Maven 中央仓库，故在同一大版本线上就近锁定到 `2.4.14`） |
 | MySQL JDBC 驱动 | mysql-connector-java 8.0.28 | 用于本地 MySQL；与 JDK 8 / Flink 1.17 匹配 |
 | Flink Kafka Connector | flink-connector-kafka 1.17.2（jar: `flink-sql-connector-kafka-1.17.2.jar`） | 与 Flink 主版本绑定 |
 | Flink JDBC Connector | flink-connector-jdbc 3.1.2-1.17 | 支持自定义 JDBC Driver（OceanBase 可用） |
@@ -190,7 +190,7 @@ ORCP/
 
     <kafka-clients.version>3.5.2</kafka-clients.version>
     <mysql.connector.version>8.0.28</mysql.connector.version>
-    <oceanbase.client.version>2.4.7</oceanbase.client.version>
+    <oceanbase.client.version>2.4.14</oceanbase.client.version>
     <mybatis-plus.version>3.5.5</mybatis-plus.version>
     <lombok.version>1.18.30</lombok.version>
 </properties>
@@ -314,7 +314,7 @@ ORCP/
   - `flink-sql-connector-kafka-1.17.2.jar`
   - `flink-connector-jdbc-3.1.2-1.17.jar`
   - `mysql-connector-java-8.0.28.jar`
-  - `oceanbase-client-2.4.7.jar`
+  - `oceanbase-client-2.4.14.jar`
 - [ ] `conf/flink-conf.yaml`：
   ```yaml
   jobmanager.rpc.address: node-1
@@ -930,7 +930,7 @@ CREATE TABLE IF NOT EXISTS agg_order_daily (
 
 - **JDK 8 生命周期**：Oracle 已停止公共更新，推荐使用 Eclipse Temurin 8（Adoptium）持续获取安全补丁；Flink 1.17/Spring Boot 2.7 均为"JDK 8 最后一个官方支持 LTS"，建议中期规划升级到 JDK 17 + Flink 1.20 + Spring Boot 3.x。
 - **OceanBase 3.2.3 兼容性**：
-  - 使用 **OceanBase Connector/J 2.4.7**（`com.oceanbase.jdbc.Driver`），兼容性优于 MySQL 驱动；
+  - 使用 **OceanBase Connector/J 2.4.14**（`com.oceanbase.jdbc.Driver`），兼容性优于 MySQL 驱动；
   - DDL 语法锁定在 **MySQL 5.7 兼容子集**；
   - 写入全部使用 Flink JDBC 的 upsert 语义（由 connector 基于主键拆分 INSERT/UPDATE），**不依赖** `INSERT ON DUPLICATE KEY UPDATE`；
   - 连接串 user 字段格式：直连用 `user@tenant#cluster`，走 OBProxy 用 `user@tenant`。
