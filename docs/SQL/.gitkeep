@@ -1,0 +1,3 @@
+# DDL scripts are delivered in Stage C.
+# Planned: mysql_detail_schema.sql, oceanbase_dw_schema.sql.
+# See docs/DEV_SPEC.md section 7.
