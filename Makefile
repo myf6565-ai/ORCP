@@ -40,6 +40,9 @@ help:
 	@echo "  make submit-flink                - run scripts/submit_job.sh"
 	@echo "  make savepoint JOB=<id>          - savepoint.sh JOB"
 	@echo "  make cancel    JOB=<id>          - cancel_job.sh JOB"
+	@echo ""
+	@echo "Acceptance:"
+	@echo "  make accept ARGS='--all'         - run scripts/acceptance_test.sh"
 
 .PHONY: build
 build:
@@ -109,6 +112,10 @@ deploy-systemd:
 gen-events:
 	@python3 -c 'import kafka' >/dev/null 2>&1 || pip install -r scripts/requirements.txt
 	python3 scripts/gen_events.py $(ARGS)
+
+.PHONY: accept
+accept:
+	bash scripts/acceptance_test.sh $(ARGS)
 
 .PHONY: submit-flink
 submit-flink:

@@ -6,9 +6,9 @@ Apache Flink + OceanBase** (MySQL mode).
 
 ## Status
 
-Stage A (repository skeleton) — Maven multi-module layout, JDK 8 version
-matrix and placeholder entry points. Business logic is added in the
-later stages described in the spec.
+Stages A–G complete. The minimum-viable production slice is in place:
+infra bootstrap scripts, schemas, orcp-ingest, orcp-flink-job, orcp-admin,
+observability stack, and the §8.8 acceptance harness.
 
 ## Technology stack (locked for JDK 8 production constraint)
 
@@ -16,7 +16,7 @@ later stages described in the spec.
 - Spring Boot **2.7.18** + Spring Cloud **2021.0.9** + Spring Cloud Alibaba **2021.0.5.0**
 - Apache Kafka **3.5.2** (ZooKeeper mode) with Apache ZooKeeper **3.7.2**
 - Apache Flink **1.17.2** (standalone, systemd-managed)
-- OceanBase **3.2.3** (MySQL mode) via `oceanbase-client` **2.4.7**
+- OceanBase **3.2.3** (MySQL mode) via `oceanbase-client` **2.4.14**
 - MySQL 8.0 (local detail / dim source), MyBatis-Plus **3.5.5**
 - Nacos **2.2.3** for registry + config
 - Prometheus + Grafana for observability
@@ -44,14 +44,60 @@ mvn -version
 # Build all modules
 make build
 
-# Run the ingest service locally (after Stage D lands business logic)
+# Run the ingest service locally
 java -jar orcp-ingest/target/orcp-ingest.jar
+
+# Produce test events (kafka-python required)
+pip install -r scripts/requirements.txt
+make gen-events ARGS='--count 100 --rate 50'
 ```
 
 ## Deployment
 
-See `docs/DEV_SPEC.md` section 5 for the CentOS environment bootstrap
-plan and section 10 for the staged delivery roadmap.
+Full install instructions live in [`docs/OPS_RUNBOOK.md`](./docs/OPS_RUNBOOK.md).
+The short version:
+
+```bash
+# On every node: bootstrap + JDK 8 + ZooKeeper + Kafka + Flink
+sudo bash deploy/centos/{00_bootstrap,10_install_jdk8,15_install_zookeeper,
+                        20_install_kafka_zk,30_install_flink}.sh
+
+# On node-1 only: MySQL + Nacos
+sudo bash deploy/centos/{40_install_mysql,50_install_nacos}.sh
+
+# On node-2 only: Prometheus + Grafana
+sudo bash deploy/centos/60_install_prom_grafana.sh
+
+# From the bastion: build, deploy Spring services, submit the Flink job
+make build
+make deploy-systemd deploy-ingest deploy-admin
+make submit-flink
+```
+
+## Acceptance test
+
+`scripts/acceptance_test.sh` runs the DEV_SPEC §8.8 checklist end-to-end
+against a live cluster and prints PASS/FAIL per gate. Results go into
+[`docs/ACCEPTANCE_REPORT.md`](./docs/ACCEPTANCE_REPORT.md).
+
+```bash
+# safe (non-destructive) gates:
+bash scripts/acceptance_test.sh
+
+# full suite including TaskManager kill and JobManager outage:
+TM_HOST=node-3 JM_HOST=node-1 INGEST_HOST=node-3 \
+    bash scripts/acceptance_test.sh --all
+```
+
+## Documentation
+
+| File                                 | Purpose                                          |
+|--------------------------------------|--------------------------------------------------|
+| `docs/DEV_SPEC.md`                   | architecture, version matrix, stage-by-stage plan |
+| `docs/OPS_RUNBOOK.md`                | first install + daily ops + troubleshooting     |
+| `docs/ACCEPTANCE_REPORT.md`          | §8.8 evidence template (copy per run)           |
+| `docs/SQL/README.md`                 | schema load instructions                         |
+| `deploy/grafana/README.md`           | Grafana dashboard import                         |
 
 ## Contributing
 
