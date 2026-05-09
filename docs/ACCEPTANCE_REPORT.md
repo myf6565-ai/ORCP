@@ -1,113 +1,106 @@
-# ORCP Acceptance Report
+# ORCP 验收报告
 
-Evidence log for [DEV_SPEC §8.8](./DEV_SPEC.md#88-). Copy this file to
-`docs/ACCEPTANCE_REPORT-<yyyy-mm-dd>.md` for each acceptance run, then
-fill in. The sections mirror the five gates in the spec and match the
-five checks in `scripts/acceptance_test.sh`.
+本报告是 [DEV_SPEC §8.8](./DEV_SPEC.md#88-) 的证据记录。每次验收运行前，请将本文件复制为
+`docs/ACCEPTANCE_REPORT-<yyyy-mm-dd>.md`，然后逐项填写。各节与规格书的五个验收门对应，
+同时与 `scripts/acceptance_test.sh` 的五项检查一一对齐。
 
-| Field       | Value                        |
-|-------------|------------------------------|
-| Date        | _YYYY-MM-DD_                 |
-| Environment | _staging / pre-prod / prod_  |
-| Git SHA     | _`git rev-parse HEAD`_       |
-| Operator    | _name_                       |
-| Run command | _e.g. `scripts/acceptance_test.sh --all`_ |
+| 字段 | 值 |
+|------|----|
+| 日期 | _YYYY-MM-DD_ |
+| 环境 | _staging / pre-prod / prod_ |
+| Git SHA | _`git rev-parse HEAD`_ |
+| 操作人 | _姓名_ |
+| 执行命令 | _例：`scripts/acceptance_test.sh --all`_ |
 
 ---
 
-## Gate 1 — Happy path
+## 验收门 1 — 正常路径
 
-> 1000 source events produced → visible in `orcp_detail.t_order` → visible
-> in OceanBase `orcp_dw.agg_order_1min` within 90 seconds.
+> 生产 1000 条源事件 → 在 `orcp_detail.t_order` 中可见 → 90 秒内在
+> OceanBase `orcp_dw.agg_order_1min` 中可见。
 
-- [ ] `gen_events.py` reported `done. total sent=1000 … failed=0`
-- [ ] `SELECT COUNT(*) FROM orcp_detail.t_order` grew by ≥ 1000
-- [ ] `SELECT COUNT(*) FROM orcp_dw.agg_order_1min` grew > 0 within 90s
-- [ ] P95 ingest processing latency remained < 200 ms
+- [ ] `gen_events.py` 输出 `done. total sent=1000 … failed=0`
+- [ ] `SELECT COUNT(*) FROM orcp_detail.t_order` 增长 ≥ 1000
+- [ ] `SELECT COUNT(*) FROM orcp_dw.agg_order_1min` 在 90 秒内增长 > 0
+- [ ] 摄入 P95 处理延迟 < 200 ms
 
 ```
-# paste the summary line from acceptance_test.sh here
+# 将 acceptance_test.sh 的汇总行粘贴于此
 ```
 
-**Result:** PASS / FAIL / N-A
+**结果：** PASS / FAIL / N-A
 
 ---
 
-## Gate 2 — TaskManager self-heal
+## 验收门 2 — TaskManager 自愈
 
-> Kill a TaskManager; within 120 s the job returns to RUNNING with no
-> records lost and no duplicates (checkpointed EXACTLY_ONCE + JDBC upsert
-> on primary key).
+> 杀死一个 TaskManager；120 秒内作业恢复为 RUNNING，无数据丢失、无重复
+> （EXACTLY_ONCE 检查点 + JDBC upsert 主键保证）。
 
-- [ ] Record pre-kill counts: `t_order=_____`, `agg_order_1min=_____`
-- [ ] `sudo systemctl restart flink-taskmanager` on `TM_HOST`
-- [ ] Flink overview shows `state=RUNNING` within 120 s
-- [ ] Post-kill counts: `t_order=_____` (unchanged), `agg_order_1min=_____` (unchanged or updated upserts only)
-- [ ] No duplicate rows in `agg_order_1min` (check via
-      `SELECT COUNT(*), COUNT(DISTINCT (window_start, biz_type, customer_id)) FROM agg_order_1min`)
+- [ ] 记录操作前计数：`t_order=_____`，`agg_order_1min=_____`
+- [ ] 在 `TM_HOST` 上执行 `sudo systemctl restart flink-taskmanager`
+- [ ] Flink 总览 120 秒内显示 `state=RUNNING`
+- [ ] 操作后计数：`t_order=_____`（不变），`agg_order_1min=_____`（不变或仅有 upsert 更新）
+- [ ] `agg_order_1min` 无重复行（验证：`SELECT COUNT(*), COUNT(DISTINCT (window_start, biz_type, customer_id)) FROM agg_order_1min`）
 
-**Result:** PASS / FAIL / N-A
+**结果：** PASS / FAIL / N-A
 
 ---
 
-## Gate 3 — Ingest restart has no replay effect
+## 验收门 3 — 摄入服务重启后无重放效果
 
-> Bounce orcp-ingest and re-send the same seeded batch; `t_order` must
-> not grow (t_dedup + Caffeine suppress the replay).
+> 重启 orcp-ingest 后重新发送相同种子批次；`t_order` 不应增长
+> （t_dedup + Caffeine 抑制重放）。
 
-- [ ] Record pre-restart: `t_order=_____`
-- [ ] `sudo systemctl restart orcp-ingest` on `INGEST_HOST`
-- [ ] Re-sent seeded batch with `--seed 7 --count 50`
-- [ ] Post-restart: `t_order=_____` (must equal pre-restart)
+- [ ] 记录重启前：`t_order=_____`
+- [ ] 在 `INGEST_HOST` 上执行 `sudo systemctl restart orcp-ingest`
+- [ ] 以 `--seed 7 --count 50` 重新发送种子批次
+- [ ] 重启后：`t_order=_____`（必须等于重启前的值）
 - [ ] `grep 'already present in t_dedup' /var/log/orcp/orcp-ingest.log | wc -l` > 0
 
-**Result:** PASS / FAIL / N-A
+**结果：** PASS / FAIL / N-A
 
 ---
 
-## Gate 4 — Observability
+## 验收门 4 — 可观测性
 
-> Prometheus scraping works, Grafana dashboards light up, `/api/health`
-> reports all subsystems UP.
+> Prometheus 抓取正常，Grafana 看板有数据，`/api/health` 显示所有子系统 UP。
 
-- [ ] `GET /api/health` returns 200 with `status=UP` for every component
-- [ ] `GET /jobs/overview` (Flink) shows at least one `RUNNING` job
-- [ ] Grafana `orcp-overview` dashboard shows non-zero values on every panel
-- [ ] Prometheus `/targets` lists all scrape jobs as `up=1`:
-      `flink`, `orcp-spring`, (optionally `kafka-exporter`)
+- [ ] `GET /api/health` 返回 200 且每个组件 `status=UP`
+- [ ] `GET /jobs/overview`（Flink）显示至少一个 `RUNNING` 作业
+- [ ] Grafana `orcp-overview` 看板每个面板均有非零数据
+- [ ] Prometheus `/targets` 所有抓取任务显示 `up=1`：`flink`、`orcp-spring`（可选 `kafka-exporter`）
 
-**Result:** PASS / FAIL / N-A
+**结果：** PASS / FAIL / N-A
 
 ---
 
-## Gate 5 — Alerting
+## 验收门 5 — 告警
 
-> Stop the JobManager. One alert fires through the configured webhook
-> within 3 minutes. Restart the JobManager and confirm the alert resolves.
+> 停止 JobManager；3 分钟内通过配置的 Webhook 收到一条告警。
+> 重启 JobManager 后确认告警已解除。
 
-- [ ] `sudo systemctl stop flink-jobmanager` on `JM_HOST`
-- [ ] Within 180 s, `GET ${ALERTMANAGER_URL}/api/v2/alerts?active=true`
-      contains an entry with `alertname=OrcpFlinkJobDown` (or
-      `OrcpSpringServiceDown`)
-- [ ] Webhook receiver (dingtalk/feishu/slack) received the message
-- [ ] After JM restart, alert transitions to `resolved` within 5 minutes
+- [ ] 在 `JM_HOST` 上执行 `sudo systemctl stop flink-jobmanager`
+- [ ] 180 秒内，`GET ${ALERTMANAGER_URL}/api/v2/alerts?active=true` 包含
+      `alertname=OrcpFlinkJobDown`（或 `OrcpSpringServiceDown`）条目
+- [ ] Webhook 接收端（钉钉 / 飞书 / Slack）收到消息
+- [ ] JM 重启后，5 分钟内告警切换为 `resolved`
 
-**Result:** PASS / FAIL / N-A
+**结果：** PASS / FAIL / N-A
 
 ---
 
-## Summary
+## 汇总
 
-| Gate | 1 happy | 2 self-heal | 3 no-dup | 4 observability | 5 alerts |
-|------|---------|-------------|----------|-----------------|----------|
-| Result | P / F | P / F | P / F | P / F | P / F |
+| 门 | 1 正常路径 | 2 自愈 | 3 无重放 | 4 可观测性 | 5 告警 |
+|----|-----------|--------|---------|-----------|--------|
+| 结果 | P / F | P / F | P / F | P / F | P / F |
 
-**Overall:** RELEASE / BLOCK
+**总体结论：** 发布 / 阻塞
 
-### Follow-ups
+### 待跟进事项
 
-Record any defects, flaky behaviour, or improvements to file as GitHub
-issues:
+将发现的缺陷、不稳定行为或改进建议记录为 GitHub Issue：
 
 1. _..._
 2. _..._

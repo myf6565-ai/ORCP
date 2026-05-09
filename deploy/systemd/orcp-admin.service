@@ -1,5 +1,5 @@
 [Unit]
-Description=ORCP Admin Service (Spring Boot, Flink control plane)
+Description=ORCP 管控服务（Spring Boot，Flink 控制面）
 Documentation=file:///opt/orcp/docs/DEV_SPEC.md
 Requires=network-online.target
 After=network-online.target flink-jobmanager.service
@@ -14,8 +14,8 @@ Environment=ORCP_LOG_HOME=/var/log/orcp
 Environment=SPRING_PROFILES_ACTIVE=prod
 Environment="JAVA_OPTS=-Xms512m -Xmx512m -XX:+UseG1GC -Dfile.encoding=UTF-8"
 
-# /etc/orcp/admin.env holds node-specific overrides: FLINK_REST, ORCP_ADMIN_USER,
-# ORCP_ADMIN_PASSWORD, OB_URL/OB_USER/OB_PASSWORD, etc.
+# /etc/orcp/admin.env 存放节点特定变量：FLINK_REST、ORCP_ADMIN_USER、
+# ORCP_ADMIN_PASSWORD、OB_URL/OB_USER/OB_PASSWORD 等。
 EnvironmentFile=-/etc/orcp/admin.env
 
 ExecStart=/opt/jdk-8/bin/java $JAVA_OPTS -jar /opt/orcp/admin/orcp-admin.jar

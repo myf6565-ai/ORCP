@@ -20,11 +20,11 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Runs per-subsystem probes and turns them into a single health blob.
+ * 对各子系统执行独立探针，并将结果合并为单一健康报告。
  *
- * <p>Each probe is independent and self-contained: a failure in one
- * subsystem never short-circuits the others.  The aggregate status is
- * simply "UP" iff every probe came back UP.  This mirrors DEV_SPEC §8.3.
+ * <p>每个探针相互独立：某个子系统失败不会影响其他探针的执行。
+ * 聚合状态为"UP"当且仅当所有探针均返回 UP。
+ * 此行为与 DEV_SPEC §8.3 保持一致。
  */
 @Slf4j
 @Service
@@ -57,7 +57,7 @@ public class HealthAggregator {
     }
 
     // ------------------------------------------------------------------
-    // Kafka: AdminClient.describeCluster
+    // Kafka：AdminClient.describeCluster
     // ------------------------------------------------------------------
 
     private ComponentHealth probeKafka() {
@@ -77,13 +77,13 @@ public class HealthAggregator {
             details.put("nodes", nodeCount);
             return ComponentHealth.up("kafka", details);
         } catch (Exception e) {
-            log.warn("kafka health probe failed: {}", e.getMessage());
+            log.warn("Kafka 健康探针失败：{}", e.getMessage());
             return ComponentHealth.down("kafka", e.toString());
         }
     }
 
     // ------------------------------------------------------------------
-    // Flink: REST /overview
+    // Flink：REST /overview
     // ------------------------------------------------------------------
 
     private ComponentHealth probeFlink() {
@@ -98,13 +98,13 @@ public class HealthAggregator {
             details.put("jobsFailed", overview.path("jobs-failed").asInt(0));
             return ComponentHealth.up("flink", details);
         } catch (FlinkRestException e) {
-            log.warn("flink health probe failed: {}", e.getMessage());
+            log.warn("Flink 健康探针失败：{}", e.getMessage());
             return ComponentHealth.down("flink", e.getMessage());
         }
     }
 
     // ------------------------------------------------------------------
-    // MySQL + OceanBase: SELECT 1 with a short timeout
+    // MySQL + OceanBase：执行 SELECT 1（带短超时）
     // ------------------------------------------------------------------
 
     private ComponentHealth probeMysql() {
@@ -124,9 +124,8 @@ public class HealthAggregator {
         Properties p = new Properties();
         p.setProperty("user", user);
         p.setProperty("password", password);
-        // MySQL 8 + OceanBase 2.4 both honour connectTimeout / socketTimeout
-        // as URL params, but we pass them via Properties for robustness
-        // against future URL-param changes.
+        // MySQL 8 和 OceanBase 2.4 均支持通过 Properties 传递超时参数，
+        // 比 URL 参数更健壮（对未来 URL 变更更友好）。
         p.setProperty("connectTimeout", String.valueOf(timeoutSeconds * 1000L));
         p.setProperty("socketTimeout", String.valueOf(timeoutSeconds * 1000L));
 
@@ -136,20 +135,20 @@ public class HealthAggregator {
             st.setQueryTimeout(timeoutSeconds);
             try (java.sql.ResultSet rs = st.executeQuery("SELECT 1")) {
                 if (!rs.next()) {
-                    return ComponentHealth.down(label, "SELECT 1 returned no rows");
+                    return ComponentHealth.down(label, "SELECT 1 未返回任何行");
                 }
             }
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("latencyMs", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0));
             return ComponentHealth.up(label, details);
         } catch (Exception e) {
-            log.warn("{} health probe failed: {}", label, e.getMessage());
+            log.warn("{} 健康探针失败：{}", label, e.getMessage());
             return ComponentHealth.down(label, e.toString());
         }
     }
 
     // ------------------------------------------------------------------
-    // DTO
+    // 内部 DTO
     // ------------------------------------------------------------------
 
     private static final class ComponentHealth {

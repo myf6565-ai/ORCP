@@ -10,16 +10,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
 /**
- * orcp-admin entry point.
+ * orcp-admin 服务入口。
  *
- * <p>A deliberately small control-plane: submit/cancel/savepoint/restore a
- * Flink job via REST, plus an aggregated health endpoint covering the four
- * externals the data plane depends on (Kafka, Flink, MySQL, OceanBase).
+ * <p>功能简介：通过 REST 接口提交/取消/savepoint Flink 作业，
+ * 并提供覆盖 Kafka、Flink、MySQL、OceanBase 四个外部依赖的聚合健康检查端点。
  *
- * <p>We exclude {@link DataSourceAutoConfiguration} because the service
- * holds no primary DataSource -- the MySQL and OceanBase probes open short
- * lived connections on demand via {@code DriverManager}.  This keeps the
- * classpath predictable: no HikariCP, no Flyway, no surprise bean wiring.
+ * <p>排除 {@link DataSourceAutoConfiguration}：本服务不持有主 DataSource，
+ * MySQL 和 OceanBase 的健康探针使用按需建立的 {@code DriverManager} 短连接。
+ * 这样可避免引入 HikariCP、Flyway 和 Spring Boot JDBC 自动配置，保持依赖集整洁。
  */
 @SpringBootApplication(exclude = {DataSourceAutoConfiguration.class})
 @EnableDiscoveryClient
@@ -29,7 +27,7 @@ public class AdminApplication {
         SpringApplication.run(AdminApplication.class, args);
     }
 
-    /** Reuse the shared JSON contract from orcp-common. */
+    /** 复用 orcp-common 提供的项目统一 JSON 配置。 */
     @Bean
     @Primary
     public ObjectMapper objectMapper() {

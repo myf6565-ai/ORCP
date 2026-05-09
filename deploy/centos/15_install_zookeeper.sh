@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# 15_install_zookeeper.sh --- Apache ZooKeeper 3.7.2, 3-node ensemble.
-# See DEV_SPEC §5.3.
+# 15_install_zookeeper.sh --- Apache ZooKeeper 3.7.2，三节点集群。
+# 参见 DEV_SPEC §5.3。
 #
-# Layout:
-#   /opt/zookeeper               -> versioned install symlink
-#   /data/zk/{data,log}          -> data + txn log (on the fast disk)
+# 目录布局：
+#   /opt/zookeeper               -> 版本化安装目录的符号链接
+#   /data/zk/{data,log}          -> 数据目录 + 事务日志（建议使用快速磁盘）
 #   /etc/systemd/system/zookeeper.service
 
 set -euo pipefail
@@ -27,7 +27,7 @@ DATA_DIR=/data/zk/data
 LOG_DIR=/data/zk/log
 
 if [[ ! -d "${ZK_EXTRACT_DIR}" ]]; then
-    log_info "Downloading ZooKeeper ${ZK_VERSION}"
+    log_info "下载 ZooKeeper ${ZK_VERSION}"
     TMP_TAR="${ORCP_DOWNLOAD_CACHE}/${ZK_TARBALL}"
     download_to "${ZK_URL}" "${TMP_TAR}"
     tar -xzf "${TMP_TAR}" -C "${INSTALL_ROOT}"
@@ -37,19 +37,19 @@ rm -f "${ZK_HOME_LINK}"
 ln -s "${ZK_EXTRACT_DIR}" "${ZK_HOME_LINK}"
 chown -R "${ORCP_USER}:${ORCP_GROUP}" "${ZK_EXTRACT_DIR}"
 
-log_info "Creating ${DATA_DIR} and ${LOG_DIR}"
+log_info "创建 ${DATA_DIR} 和 ${LOG_DIR}"
 ensure_dir "${DATA_DIR}" "${ORCP_USER}:${ORCP_GROUP}" 0750
 ensure_dir "${LOG_DIR}"  "${ORCP_USER}:${ORCP_GROUP}" 0750
 
-log_info "Writing myid=${NODE_ID}"
+log_info "写入 myid=${NODE_ID}"
 printf '%s\n' "${NODE_ID}" >"${DATA_DIR}/myid"
 chown "${ORCP_USER}:${ORCP_GROUP}" "${DATA_DIR}/myid"
 
-log_info "Rendering conf/zoo.cfg"
+log_info "渲染 conf/zoo.cfg"
 ZK_CONF="${ZK_HOME_LINK}/conf/zoo.cfg"
 {
     cat <<EOF
-# Managed by ORCP deploy/centos/15_install_zookeeper.sh
+# 由 ORCP deploy/centos/15_install_zookeeper.sh 管理
 tickTime=2000
 initLimit=10
 syncLimit=5
@@ -68,26 +68,25 @@ EOF
 } >"${ZK_CONF}"
 chown "${ORCP_USER}:${ORCP_GROUP}" "${ZK_CONF}"
 
-log_info "Linking ZooKeeper log4j output into /var/log/orcp"
-# Redirect ZK's own logs directory into /var/log/orcp/zookeeper for central collection.
+log_info "将 ZooKeeper 日志目录软链接到 /var/log/orcp"
 ensure_dir /var/log/orcp/zookeeper "${ORCP_USER}:${ORCP_GROUP}" 0755
 rm -f "${ZK_HOME_LINK}/logs"
 ln -s /var/log/orcp/zookeeper "${ZK_HOME_LINK}/logs"
 
-log_info "Installing systemd unit zookeeper.service"
+log_info "安装 systemd 单元 zookeeper.service"
 install_systemd_unit "${SCRIPT_DIR}/../systemd/zookeeper.service" zookeeper.service
 
-log_info "Enabling + starting zookeeper.service"
+log_info "启用并启动 zookeeper.service"
 systemctl enable --now zookeeper.service
 
-log_info "Waiting up to 30s for ZooKeeper to answer ruok"
+log_info "等待 ZooKeeper 响应 ruok（最多 30 秒）"
 for _ in $(seq 1 30); do
     if echo ruok | nc -w 1 127.0.0.1 2181 2>/dev/null | grep -q '^imok$'; then
-        log_info "ZooKeeper answered imok"
+        log_info "ZooKeeper 已响应 imok"
         exit 0
     fi
     sleep 1
 done
 
-log_warn "ZooKeeper did not answer within 30s; run 'systemctl status zookeeper' to inspect."
+log_warn "ZooKeeper 在 30 秒内未响应，请执行 'systemctl status zookeeper' 检查。"
 exit 1

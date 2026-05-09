@@ -1,15 +1,15 @@
-# Alertmanager 0.26.x configuration for ORCP.
+# Alertmanager 0.26.x 配置（ORCP 项目使用）。
 #
-# Copy to /opt/alertmanager/alertmanager.yml (or wherever you install
-# Alertmanager) and replace the webhook URL below with the real dingtalk
-# or feishu endpoint.
+# 将本文件复制到 /opt/alertmanager/alertmanager.yml，并将下方 webhook URL
+# 替换为真实的钉钉/飞书 Webhook 地址。
 #
-# Install reference (standalone, systemd):
+# 安装参考（standalone + systemd）：
 #   wget https://github.com/prometheus/alertmanager/releases/download/v0.26.0/alertmanager-0.26.0.linux-amd64.tar.gz
-#   tar -xzf alertmanager-0.26.0.linux-amd64.tar.gz -C /opt && ln -sfn /opt/alertmanager-0.26.0.linux-amd64 /opt/alertmanager
-#   systemd unit: ExecStart=/opt/alertmanager/alertmanager --config.file=/opt/alertmanager/alertmanager.yml
+#   tar -xzf alertmanager-0.26.0.linux-amd64.tar.gz -C /opt
+#   ln -sfn /opt/alertmanager-0.26.0.linux-amd64 /opt/alertmanager
+#   # systemd 单元：ExecStart=/opt/alertmanager/alertmanager --config.file=/opt/alertmanager/alertmanager.yml
 #
-# Then tell Prometheus about it in prometheus.yml:
+# 随后在 prometheus.yml 中声明告警管理器：
 #   alerting:
 #     alertmanagers:
 #       - static_configs:
@@ -19,8 +19,8 @@ global:
   resolve_timeout: 5m
 
 route:
-  # Every alert, critical or warning, hits a single default receiver.  Split
-  # into multiple receivers once you have more than one pager group.
+  # 所有告警（critical 或 warning）走同一个默认 receiver。
+  # 待告警分组增多后，可拆分为多个 receiver。
   receiver: orcp-webhook
   group_by: ['alertname', 'service']
   group_wait: 10s
@@ -34,20 +34,19 @@ route:
 receivers:
   - name: orcp-webhook
     webhook_configs:
-      # Dingtalk / Feishu don't accept Alertmanager's native JSON format;
-      # put an adapter (e.g. prometheus-webhook-dingtalk) in front:
+      # 钉钉/飞书不接受 Alertmanager 原生 JSON 格式，需在前面加一个适配器
+      # （如 prometheus-webhook-dingtalk）：
       #
       #   systemctl enable --now prometheus-webhook-dingtalk
       #   url: http://127.0.0.1:8060/dingtalk/orcp/send
       #
-      # For a minimum install without the adapter, point at an inbound
-      # webhook that accepts arbitrary JSON (Slack-compatible endpoints
-      # work; Dingtalk raw endpoints need signing, which is out of scope).
+      # 如无适配器，可指向接受任意 JSON 的 Inbound Webhook（Slack 兼容端点可直接使用；
+      # 钉钉原始端点需要签名，超出最小方案范围）。
       - url: http://127.0.0.1:8060/dingtalk/orcp/send
         send_resolved: true
 
 inhibit_rules:
-  # Don't page on per-job alerts when the whole service is already down.
+  # 整体服务已下线时，抑制同实例的作业级告警，避免告警风暴。
   - source_matchers: [ alertname="OrcpSpringServiceDown" ]
     target_matchers:  [ service="orcp-ingest" ]
     equal: [ instance ]

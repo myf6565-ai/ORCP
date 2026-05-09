@@ -1,107 +1,106 @@
 # ORCP
 
-**Online Real-time Computing Platform** — a minimum-production, landable
-real-time computing system built on **Spring Cloud + Apache Kafka +
-Apache Flink + OceanBase** (MySQL mode).
+**在线实时计算平台** —— 基于 **Spring Cloud + Apache Kafka + Apache Flink + OceanBase**（MySQL 模式）构建的最小可生产、可落地实时计算系统。
 
-## Status
+## 当前状态
 
-Stages A–G complete. The minimum-viable production slice is in place:
-infra bootstrap scripts, schemas, orcp-ingest, orcp-flink-job, orcp-admin,
-observability stack, and the §8.8 acceptance harness.
+阶段 A–G 全部完成。最小可行生产切片已就绪：
+基础设施引导脚本、数据库建表、orcp-ingest、orcp-flink-job、orcp-admin、
+可观测性栈，以及 §8.8 验收测试套件。
 
-## Technology stack (locked for JDK 8 production constraint)
+## 技术栈（JDK 8 生产约束锁定）
 
-- JDK: Temurin **8u402**
+- JDK：Temurin **8u402**
 - Spring Boot **2.7.18** + Spring Cloud **2021.0.9** + Spring Cloud Alibaba **2021.0.5.0**
-- Apache Kafka **3.5.2** (ZooKeeper mode) with Apache ZooKeeper **3.7.2**
-- Apache Flink **1.17.2** (standalone, systemd-managed)
-- OceanBase **3.2.3** (MySQL mode) via `oceanbase-client` **2.4.14**
-- MySQL 8.0 (local detail / dim source), MyBatis-Plus **3.5.5**
-- Nacos **2.2.3** for registry + config
-- Prometheus + Grafana for observability
+- Apache Kafka **3.5.2**（ZooKeeper 模式）+ Apache ZooKeeper **3.7.2**
+- Apache Flink **1.17.2**（standalone，systemd 托管）
+- OceanBase **3.2.3**（MySQL 模式），通过 `oceanbase-client` **2.4.14** 接入
+- MySQL 8.0（本地明细 / 维表来源），MyBatis-Plus **3.5.5**
+- Nacos **2.2.3** 作为注册中心与配置中心
+- Prometheus + Grafana 负责可观测性
 
-## Repository layout
+## 仓库目录
 
 ```
-orcp-common/       shared DTOs, constants, utilities (library)
-orcp-ingest/       Spring Boot: Kafka -> MySQL detail + forward topic
-orcp-flink-job/    Flink 1.17.2 job jar (Kafka + MySQL dim + OceanBase sink)
-orcp-admin/        minimal control plane (submit/cancel Flink + health)
-deploy/            CentOS bootstrap scripts, systemd units, flink-conf
-docs/              DEV_SPEC.md, OPS_RUNBOOK.md, SQL schemas
-scripts/           job lifecycle helpers
-Makefile           one-stop build and deploy entry points
+orcp-common/       共享 DTO、常量、工具类（纯库 jar）
+orcp-ingest/       Spring Boot 服务：Kafka -> MySQL 明细 + 转发 topic
+orcp-flink-job/    Flink 1.17.2 作业 jar（Kafka + MySQL 维表 + OceanBase sink）
+orcp-admin/        最小管控服务（提交/取消 Flink 作业 + 聚合健康检查）
+deploy/            CentOS 引导脚本、systemd 单元文件、flink-conf
+docs/              DEV_SPEC.md、OPS_RUNBOOK.md、SQL 建表脚本
+scripts/           作业生命周期辅助脚本
+Makefile           统一构建与部署入口
 ```
 
-## Quick start (developers)
+## 快速开始（开发者）
 
 ```bash
-# Prerequisites: JDK 8, Maven 3.8.x
-java -version         # must print 1.8.x
+# 前置条件：JDK 8、Maven 3.8.x
+java -version         # 必须输出 1.8.x
 mvn -version
 
-# Build all modules
+# 构建所有模块
 make build
 
-# Run the ingest service locally
+# 本地启动摄入服务
 java -jar orcp-ingest/target/orcp-ingest.jar
 
-# Produce test events (kafka-python required)
+# 生产测试事件（需先安装 kafka-python）
 pip install -r scripts/requirements.txt
 make gen-events ARGS='--count 100 --rate 50'
 ```
 
-## Deployment
+## 部署
 
-Full install instructions live in [`docs/OPS_RUNBOOK.md`](./docs/OPS_RUNBOOK.md).
-The short version:
+完整安装说明见 [`docs/OPS_RUNBOOK.md`](./docs/OPS_RUNBOOK.md)。简要流程：
 
 ```bash
-# On every node: bootstrap + JDK 8 + ZooKeeper + Kafka + Flink
-sudo bash deploy/centos/{00_bootstrap,10_install_jdk8,15_install_zookeeper,
-                        20_install_kafka_zk,30_install_flink}.sh
+# 每个节点：基础引导 + JDK 8 + ZooKeeper + Kafka + Flink
+sudo bash deploy/centos/00_bootstrap.sh
+sudo bash deploy/centos/10_install_jdk8.sh
+sudo bash deploy/centos/15_install_zookeeper.sh
+sudo bash deploy/centos/20_install_kafka_zk.sh
+sudo bash deploy/centos/30_install_flink.sh
 
-# On node-1 only: MySQL + Nacos
-sudo bash deploy/centos/{40_install_mysql,50_install_nacos}.sh
+# 仅 node-1：MySQL + Nacos
+sudo bash deploy/centos/40_install_mysql.sh
+sudo bash deploy/centos/50_install_nacos.sh
 
-# On node-2 only: Prometheus + Grafana
+# 仅 node-2：Prometheus + Grafana
 sudo bash deploy/centos/60_install_prom_grafana.sh
 
-# From the bastion: build, deploy Spring services, submit the Flink job
+# 在堡垒机：构建、部署 Spring 服务、提交 Flink 作业
 make build
 make deploy-systemd deploy-ingest deploy-admin
 make submit-flink
 ```
 
-## Acceptance test
+## 验收测试
 
-`scripts/acceptance_test.sh` runs the DEV_SPEC §8.8 checklist end-to-end
-against a live cluster and prints PASS/FAIL per gate. Results go into
-[`docs/ACCEPTANCE_REPORT.md`](./docs/ACCEPTANCE_REPORT.md).
+`scripts/acceptance_test.sh` 对运行中的集群执行 DEV_SPEC §8.8 验收清单，
+并按门输出 PASS/FAIL。结果填入 [`docs/ACCEPTANCE_REPORT.md`](./docs/ACCEPTANCE_REPORT.md)。
 
 ```bash
-# safe (non-destructive) gates:
+# 安全（非破坏性）门：
 bash scripts/acceptance_test.sh
 
-# full suite including TaskManager kill and JobManager outage:
+# 完整套件（含 TaskManager 杀死和 JobManager 停机）：
 TM_HOST=node-3 JM_HOST=node-1 INGEST_HOST=node-3 \
     bash scripts/acceptance_test.sh --all
 ```
 
-## Documentation
+## 文档索引
 
-| File                                 | Purpose                                          |
-|--------------------------------------|--------------------------------------------------|
-| `docs/DEV_SPEC.md`                   | architecture, version matrix, stage-by-stage plan |
-| `docs/OPS_RUNBOOK.md`                | first install + daily ops + troubleshooting     |
-| `docs/ACCEPTANCE_REPORT.md`          | §8.8 evidence template (copy per run)           |
-| `docs/SQL/README.md`                 | schema load instructions                         |
-| `deploy/grafana/README.md`           | Grafana dashboard import                         |
+| 文件 | 用途 |
+|------|------|
+| `docs/DEV_SPEC.md` | 架构设计、版本矩阵、分阶段交付计划 |
+| `docs/OPS_RUNBOOK.md` | 首次安装 + 日常运维 + 故障排查 |
+| `docs/ACCEPTANCE_REPORT.md` | §8.8 证据记录模板（每次运行复制一份） |
+| `docs/SQL/README.md` | 数据库建表脚本加载说明 |
+| `deploy/grafana/README.md` | Grafana 看板导入指南 |
 
-## Contributing
+## 贡献指南
 
-1. Branch off `main` using `feat/*`, `fix/*`, `docs/*`, `chore/*`.
-2. Each PR should target a single stage section of `docs/DEV_SPEC.md`.
-3. All Java code must be JDK 8 source/target; see DEV_SPEC appendix B
-   for the forbidden API/syntax list.
+1. 从 `main` 基于 `feat/*`、`fix/*`、`docs/*`、`chore/*` 创建分支。
+2. 每个 PR 应对应 `docs/DEV_SPEC.md` 的某个阶段章节。
+3. 所有 Java 代码必须使用 JDK 8 source/target；禁止使用的 API/语法见 DEV_SPEC 附录 B。

@@ -10,14 +10,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
 /**
- * orcp-ingest entry point.
+ * orcp-ingest 服务入口。
  *
- * <p>Consumes external Kafka topics, persists detail rows into the local
- * MySQL {@code orcp_detail} schema and forwards normalised events to
- * the internal {@code orcp.mid.events} topic for the Flink job.
+ * <p>消费外部 Kafka topic，将明细行写入本地 MySQL {@code orcp_detail} 库，
+ * 并将标准化后的事件转发到内部 {@code orcp.mid.events} topic 供 Flink 作业消费。
  *
- * <p>{@link MapperScan} keeps the MyBatis-Plus mapper package explicit so
- * developers can see at a glance where DAOs live.
+ * <p>{@link MapperScan} 显式声明 MyBatis-Plus Mapper 扫描包，
+ * 方便开发者一眼看到 DAO 层的位置。
  */
 @SpringBootApplication
 @EnableDiscoveryClient
@@ -29,9 +28,9 @@ public class IngestApplication {
     }
 
     /**
-     * Reuse the project-wide Jackson configuration from orcp-common so that
-     * both serialisation (forward payload) and deserialisation (incoming
-     * record) go through the same JSR-310 / NON_NULL / lenient settings.
+     * 复用 orcp-common 提供的项目统一 Jackson 配置，
+     * 确保序列化（转发 payload）与反序列化（incoming record）
+     * 使用相同的 JSR-310 / NON_NULL / 宽松模式。
      */
     @Bean
     @Primary
@@ -39,4 +38,3 @@ public class IngestApplication {
         return JsonUtils.mapper();
     }
 }
-

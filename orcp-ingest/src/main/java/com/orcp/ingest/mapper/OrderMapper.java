@@ -5,11 +5,10 @@ import com.orcp.ingest.entity.OrderEntity;
 import org.apache.ibatis.annotations.Mapper;
 
 /**
- * MyBatis-Plus mapper for {@code orcp_detail.t_order}.
+ * {@code orcp_detail.t_order} 的 MyBatis-Plus Mapper。
  *
- * <p>Kept intentionally minimal -- the default {@code insert} method is
- * enough; we rely on the dedup layer to guarantee the row doesn't already
- * exist, so we don't need {@code insertOrUpdate} in the ingest path.
+ * <p>刻意保持简洁：摄入路径已由去重层保证幂等性，
+ * 因此使用默认的 {@code insert} 方法即可，无需 {@code insertOrUpdate}。
  */
 @Mapper
 public interface OrderMapper extends BaseMapper<OrderEntity> {

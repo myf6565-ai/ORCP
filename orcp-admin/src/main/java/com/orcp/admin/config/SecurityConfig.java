@@ -13,23 +13,20 @@ import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
- * Minimum viable auth for the control plane (DEV_SPEC §6.4):
+ * 控制面最小化认证配置（DEV_SPEC §6.4）：
  *
  * <ul>
- *   <li>Basic auth over a single in-memory admin user; credentials are
- *       resolved from {@code orcp.admin.username}/{@code orcp.admin.password}
- *       (real values injected via Nacos).</li>
- *   <li>Actuator {@code /actuator/health/**} and {@code /actuator/prometheus}
- *       are anonymous so Prometheus + systemd-level probes work without a
- *       credential.</li>
- *   <li>Everything else under {@code /api/**} and {@code /actuator/**}
- *       requires authentication.</li>
- *   <li>CSRF is disabled because the API is JSON + machine-to-machine.</li>
+ *   <li>单一内存 admin 用户 + Basic Auth；凭据从
+ *       {@code orcp.admin.username}/{@code orcp.admin.password} 读取
+ *       （真实值通过 Nacos 注入）。</li>
+ *   <li>Actuator {@code /actuator/health/**} 和 {@code /actuator/prometheus}
+ *       匿名可访问，供 Prometheus 和 systemd 健康探针使用。</li>
+ *   <li>{@code /api/**} 和其余 {@code /actuator/**} 需要认证。</li>
+ *   <li>CSRF 已禁用（纯 JSON 机器对机器 API）。</li>
  * </ul>
  *
- * <p>No role hierarchy: we have one user and no intention of adding more
- * in the minimum deployment.  When the admin surface grows, upgrade to a
- * proper identity provider.
+ * <p>当前无角色层级：只有一个用户，最小化部署不需要复杂 RBAC。
+ * 业务扩展后，建议接入正式 IdP。
  */
 @Configuration
 public class SecurityConfig {
@@ -40,7 +37,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Anonymous health surface for Prometheus / systemd.
+                        // 匿名放行：Prometheus 抓取和 systemd 健康探针无需凭据。
                         .antMatchers("/actuator/health/**",
                                      "/actuator/info",
                                      "/actuator/prometheus",

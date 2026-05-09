@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
-# 20_install_kafka_zk.sh --- Apache Kafka 3.5.2 in ZooKeeper mode.
-# See DEV_SPEC §5.4.
+# 20_install_kafka_zk.sh --- Apache Kafka 3.5.2（ZooKeeper 模式）。
+# 参见 DEV_SPEC §5.4。
 #
-# Layout:
-#   /opt/kafka                -> versioned install symlink
-#   /data/kafka-logs          -> log.dirs (message segments)
+# 目录布局：
+#   /opt/kafka                -> 版本化安装目录的符号链接
+#   /data/kafka-logs          -> log.dirs（消息段文件）
 #   /etc/systemd/system/kafka.service
 #
-# Assumes ZooKeeper is already running across the ensemble (15_install_zookeeper.sh).
+# 前提：ZooKeeper 集群已在各节点运行（15_install_zookeeper.sh）。
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,7 +29,7 @@ KAFKA_EXTRACT_DIR="${INSTALL_ROOT}/kafka_${KAFKA_SCALA}-${KAFKA_VERSION}"
 DATA_DIR=/data/kafka-logs
 
 if [[ ! -d "${KAFKA_EXTRACT_DIR}" ]]; then
-    log_info "Downloading Kafka ${KAFKA_VERSION}"
+    log_info "下载 Kafka ${KAFKA_VERSION}"
     TMP_TAR="${ORCP_DOWNLOAD_CACHE}/${KAFKA_TARBALL}"
     download_to "${KAFKA_URL}" "${TMP_TAR}"
     tar -xzf "${TMP_TAR}" -C "${INSTALL_ROOT}"
@@ -41,7 +41,7 @@ chown -R "${ORCP_USER}:${ORCP_GROUP}" "${KAFKA_EXTRACT_DIR}"
 
 ensure_dir "${DATA_DIR}" "${ORCP_USER}:${ORCP_GROUP}" 0750
 
-# Build the ZooKeeper connect string (all nodes, under chroot /kafka).
+# 构建 ZooKeeper 连接串（所有节点，使用 /kafka chroot）。
 ZK_CONNECT=""
 for i in $(seq 1 "${NODE_COUNT}"); do
     host="$(host_for "${i}")"
@@ -51,17 +51,16 @@ done
 ZK_CONNECT="${ZK_CONNECT}/kafka"
 
 THIS_HOST="$(host_for "${NODE_ID}")"
-: "${THIS_HOST:?Cannot resolve NODE_${NODE_ID}_HOST}"
+: "${THIS_HOST:?无法解析 NODE_${NODE_ID}_HOST}"
 
-# Replication factor + ISR track the cluster size but clamp at 3 and 2 for
-# larger clusters (and degrade sensibly for single-node POCs).
+# 复制因子和 ISR 跟随集群规模，但最大不超过 3/2（单节点 POC 时优雅降级）。
 REP_FACTOR=$(( NODE_COUNT < 3 ? NODE_COUNT : 3 ))
 MIN_ISR=$(( REP_FACTOR < 2 ? 1 : 2 ))
 
-log_info "Rendering config/server.properties for broker.id=${NODE_ID}"
+log_info "为 broker.id=${NODE_ID} 渲染 config/server.properties"
 KAFKA_CONF="${KAFKA_HOME_LINK}/config/server.properties"
 cat >"${KAFKA_CONF}" <<EOF
-# Managed by ORCP deploy/centos/20_install_kafka_zk.sh
+# 由 ORCP deploy/centos/20_install_kafka_zk.sh 管理
 broker.id=${NODE_ID}
 
 listeners=PLAINTEXT://0.0.0.0:9092
@@ -97,29 +96,29 @@ unclean.leader.election.enable=false
 EOF
 chown "${ORCP_USER}:${ORCP_GROUP}" "${KAFKA_CONF}"
 
-log_info "Linking Kafka logs into /var/log/orcp"
+log_info "将 Kafka 日志目录软链接到 /var/log/orcp"
 ensure_dir /var/log/orcp/kafka "${ORCP_USER}:${ORCP_GROUP}" 0755
 rm -rf "${KAFKA_HOME_LINK}/logs"
 ln -s /var/log/orcp/kafka "${KAFKA_HOME_LINK}/logs"
 
-log_info "Installing systemd unit kafka.service"
+log_info "安装 systemd 单元 kafka.service"
 install_systemd_unit "${SCRIPT_DIR}/../systemd/kafka.service" kafka.service
 
-log_info "Enabling + starting kafka.service"
+log_info "启用并启动 kafka.service"
 systemctl enable --now kafka.service
 
-log_info "Waiting up to 45s for Kafka to accept connections on :9092"
+log_info "等待 Kafka 在 :9092 接受连接（最多 45 秒）"
 for _ in $(seq 1 45); do
     if (echo > "/dev/tcp/127.0.0.1/9092") 2>/dev/null; then
-        log_info "Kafka is listening"
+        log_info "Kafka 已开始监听"
         break
     fi
     sleep 1
 done
 
-# Create the canonical topics only from the first node (idempotent check).
+# 仅在第一个节点创建所需 topic（幂等检查）。
 if [[ "${NODE_ID}" == "1" ]]; then
-    log_info "Ensuring topics orcp.src.demo / orcp.mid.events exist"
+    log_info "确保 orcp.src.demo / orcp.mid.events topic 存在"
     for topic in orcp.src.demo orcp.mid.events; do
         if ! "${KAFKA_HOME_LINK}/bin/kafka-topics.sh" \
                 --bootstrap-server "${THIS_HOST}:9092" \
@@ -128,11 +127,11 @@ if [[ "${NODE_ID}" == "1" ]]; then
                 --bootstrap-server "${THIS_HOST}:9092" \
                 --create --topic "${topic}" \
                 --partitions 3 --replication-factor "${REP_FACTOR}"
-            log_info "Created topic ${topic}"
+            log_info "已创建 topic：${topic}"
         else
-            log_info "Topic ${topic} already exists"
+            log_info "topic 已存在：${topic}"
         fi
     done
 fi
 
-log_info "20_install_kafka_zk.sh finished successfully"
+log_info "20_install_kafka_zk.sh 执行完毕"

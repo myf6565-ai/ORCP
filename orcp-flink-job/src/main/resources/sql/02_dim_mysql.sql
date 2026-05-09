@@ -1,13 +1,12 @@
 -- =============================================================================
--- MySQL dimension: t_customer, accessed through the Flink JDBC lookup table
--- source.  See orcp_detail.t_customer in docs/SQL/mysql_detail_schema.sql.
+-- MySQL 维表：t_customer，通过 Flink JDBC lookup 方式访问。
+-- 对应 docs/SQL/mysql_detail_schema.sql 中的 orcp_detail.t_customer。
 --
--- Partial cache: up to 100k rows, evicted 10 min after write.  Lookup misses
--- populate the cache on demand; there is no full-table preload.
+-- PARTIAL 缓存：最多 10 万行，写入后 10 分钟过期。
+-- lookup miss 时按需填充缓存，不做全量预加载。
 --
--- Retries: 3 JDBC attempts before the lookup fails the pipeline.  Combined
--- with the Flink restart strategy (fixed-delay, 10 attempts, 30s delay), a
--- transient MySQL blip rides out without manual intervention.
+-- 重试：最多 3 次 JDBC 重试。结合 Flink 的 fixed-delay 重启策略
+--（最多 10 次，每次 30 秒），可扛过短时 MySQL 抖动。
 -- =============================================================================
 
 CREATE TABLE dim_customer (

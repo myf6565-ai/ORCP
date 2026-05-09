@@ -17,22 +17,22 @@ import java.io.InputStream;
 import java.util.Objects;
 
 /**
- * orcp-flink-job entry point.
+ * orcp-flink-job 入口类。
  *
- * <p>Pipeline: Kafka source ({@code orcp.mid.events}) -> JDBC lookup against
- * the MySQL {@code t_customer} dim -> 1-minute tumbling window aggregate ->
- * JDBC upsert into OceanBase {@code agg_order_1min}.
+ * <p>流水线：Kafka source（{@code orcp.mid.events}）
+ * -> MySQL JDBC lookup 维表关联
+ * -> 1 分钟滚动窗口聚合
+ * -> OceanBase JDBC upsert sink（{@code agg_order_1min}）。
  *
- * <p>All DDL is externalised under {@code src/main/resources/sql/}; this class
- * only wires the execution environment and hands the SQL to {@link SqlLoader}.
+ * <p>所有 DDL 外置于 {@code src/main/resources/sql/}；
+ * 本类仅负责配置执行环境并将 SQL 委托给 {@link SqlLoader} 执行。
  *
- * <p>Parameters are resolved with this precedence (first win):
+ * <p>参数优先级（先匹配者生效）：
  * <ol>
- *   <li>Command-line {@code --key value} pairs.</li>
- *   <li>{@code job.properties} bundled in the jar.</li>
+ *   <li>命令行 {@code --key value} 参数</li>
+ *   <li>jar 包内 {@code job.properties} 中的默认值</li>
  * </ol>
- * Secrets (DB passwords, Kafka SASL) should always be injected at submit time
- * via the CLI, never baked into the jar.
+ * 敏感信息（DB 密码、Kafka SASL）应在提交时通过 CLI 注入，切勿打包进 jar。
  */
 public final class OrcpFlinkJob {
 
@@ -41,7 +41,7 @@ public final class OrcpFlinkJob {
     private static final String JOB_NAME = "orcp-flink-job";
     private static final String JOB_PROPERTIES_RESOURCE = "/job.properties";
 
-    /** Classpath resources executed in order; later files depend on earlier ones. */
+    /** SQL 文件按此顺序执行，后面的文件可引用前面文件中定义的表/视图。 */
     private static final String[] SQL_RESOURCES = new String[] {
             "/sql/01_source_kafka.sql",
             "/sql/02_dim_mysql.sql",
@@ -54,30 +54,30 @@ public final class OrcpFlinkJob {
 
     public static void main(String[] args) throws Exception {
         ParameterTool params = buildParams(args);
-        LOG.info("Starting {} with {} parameter(s)", JOB_NAME, params.getProperties().size());
+        LOG.info("启动 {}，共 {} 个参数", JOB_NAME, params.getProperties().size());
 
         StreamExecutionEnvironment env = buildEnvironment(params);
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(
                 env, EnvironmentSettings.newInstance().inStreamingMode().build());
 
-        // Make parameters available to functions/operators running on workers.
+        // 将作业名称写入 Pipeline 配置，使 Flink Web UI 显示友好名称。
         tEnv.getConfig().getConfiguration().set(PipelineOptions.NAME, JOB_NAME);
 
         SqlLoader.loadAndExecute(tEnv, params, SQL_RESOURCES);
-        LOG.info("{} submitted to the cluster", JOB_NAME);
+        LOG.info("{} 已提交到集群", JOB_NAME);
     }
 
     // ------------------------------------------------------------------
-    // Internals
+    // 内部辅助方法
     // ------------------------------------------------------------------
 
     static ParameterTool buildParams(String[] args) throws Exception {
         ParameterTool fileParams;
         try (InputStream in = OrcpFlinkJob.class.getResourceAsStream(JOB_PROPERTIES_RESOURCE)) {
-            Objects.requireNonNull(in, JOB_PROPERTIES_RESOURCE + " not found on classpath");
+            Objects.requireNonNull(in, JOB_PROPERTIES_RESOURCE + " 在 classpath 上找不到");
             fileParams = ParameterTool.fromPropertiesFile(in);
         }
-        // Command-line values override the bundled defaults.
+        // 命令行参数覆盖 job.properties 中的默认值。
         return fileParams.mergeWith(ParameterTool.fromArgs(args));
     }
 
@@ -86,8 +86,8 @@ public final class OrcpFlinkJob {
         final StreamExecutionEnvironment env =
                 StreamExecutionEnvironment.getExecutionEnvironment(conf);
 
-        // Checkpointing: EXACTLY_ONCE, 60s interval, 30s min-pause, 10m timeout.
-        // These numbers match DEV_SPEC §5.5 / §6.3.
+        // 检查点配置：EXACTLY_ONCE，60s 间隔，30s 最短暂停，10min 超时。
+        // 参数与 DEV_SPEC §5.5 / §6.3 一致。
         env.enableCheckpointing(60_000L, CheckpointingMode.EXACTLY_ONCE);
         CheckpointConfig cp = env.getCheckpointConfig();
         cp.setMinPauseBetweenCheckpoints(30_000L);
@@ -97,19 +97,18 @@ public final class OrcpFlinkJob {
         cp.setExternalizedCheckpointCleanup(
                 CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
 
-        // Restart strategy: 10 retries at 30s spacing.  Beyond that, the
-        // JobManager fails the job and the operator (or admin service) has
-        // to restart from a savepoint.
+        // 重启策略：最多重试 10 次，每次间隔 30 秒。
+        // 超出后 JobManager 标记作业为 FAILED，运维人员从 savepoint 恢复。
         env.setRestartStrategy(
                 RestartStrategies.fixedDelayRestart(10, Time.seconds(30)));
 
-        // Parallelism default.  flink-conf.yaml sets this globally to 2; an
-        // operator can override on the submit line via --parallelism <n>.
+        // 默认并行度由 flink-conf.yaml 全局设置为 2；
+        // 可在提交时通过 --parallelism <n> 覆盖。
         if (params.has("parallelism")) {
             env.setParallelism(params.getInt("parallelism"));
         }
 
-        LOG.info("Flink environment: parallelism={}, checkpointing=EXACTLY_ONCE@60s, "
+        LOG.info("Flink 环境：parallelism={}，checkpointing=EXACTLY_ONCE@60s，"
                         + "restartStrategy=fixed-delay(10,30s)",
                 env.getParallelism());
         return env;

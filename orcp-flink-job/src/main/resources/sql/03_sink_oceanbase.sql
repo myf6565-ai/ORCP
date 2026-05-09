@@ -1,25 +1,21 @@
 -- =============================================================================
--- OceanBase 3.2.3 sink: agg_order_1min in the orcp_dw schema
--- (docs/SQL/oceanbase_dw_schema.sql).
+-- OceanBase 3.2.3 sink：orcp_dw 库的 agg_order_1min 表。
+-- 对应 docs/SQL/oceanbase_dw_schema.sql。
 --
--- Why 'jdbc:mysql://' and not 'jdbc:oceanbase://'?
---   * flink-connector-jdbc 3.1.2-1.17 selects its SQL dialect from the URL
---     prefix; only the built-in 'mysql', 'postgres', and 'derby' prefixes
---     are recognised.  'jdbc:oceanbase://' would throw a ValidationException
---     at CREATE TABLE time with no dialect matched.
---   * OceanBase Connector/J 2.4.14 advertises itself as 'com.oceanbase.jdbc.Driver'
---     but also accepts 'jdbc:mysql://' URLs unchanged.
---   So: we pin the driver explicitly AND keep the URL on the 'mysql' scheme.
---   DEV_SPEC §11 covers this combination.
+-- 为何 URL 前缀使用 'jdbc:mysql://' 而非 'jdbc:oceanbase://'？
+--   * flink-connector-jdbc 3.1.2-1.17 根据 URL scheme 选择 SQL 方言；
+--     只认识 'mysql'、'postgres'、'derby' 三种前缀。
+--     'jdbc:oceanbase://' 会在 CREATE TABLE 时抛出 ValidationException（无法匹配方言）。
+--   * OceanBase Connector/J 2.4.14 以 'com.oceanbase.jdbc.Driver' 注册，
+--     但同时接受 'jdbc:mysql://' URL，两者完全兼容。
+--   因此：显式指定 driver 并保持 URL 使用 mysql scheme 即可。
+--   参见 DEV_SPEC §11 及 Stage E PR 说明。
 --
--- The sink operates in UPSERT mode because the source is a keyed
--- aggregating stream (window + group by).  With the PRIMARY KEY declared
--- below, the JDBC connector generates INSERT ... ON DUPLICATE KEY UPDATE
--- for each flushed batch -- which OB 3.2.3 supports on non-partitioned
--- tables (the table in §7.2 has no explicit partition clause).
+-- sink 以 UPSERT 模式运行（上游为有键聚合流）。
+-- 声明 PRIMARY KEY 后，JDBC connector 为每批写入生成
+-- INSERT ... ON DUPLICATE KEY UPDATE —— OB 3.2.3 在非分区表上支持此语法。
 --
--- Buffering: flush every 1000 rows OR every 2s, whichever comes first.
--- Retries: 3 JDBC attempts.
+-- 缓冲：每 1000 行或每 2 秒刷新一次（以先到者为准）。
 -- =============================================================================
 
 CREATE TABLE sink_agg_1min (

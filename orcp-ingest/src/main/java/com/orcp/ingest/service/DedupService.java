@@ -10,19 +10,18 @@ import javax.annotation.PostConstruct;
 import java.time.Duration;
 
 /**
- * Fast first-tier dedup cache.
+ * 快速第一层去重缓存（Caffeine LRU）。
  *
- * <p>Combined with {@code INSERT IGNORE INTO t_dedup} (second tier) this
- * gives us the two-layer scheme called out by DEV_SPEC §6.2:
+ * <p>与 {@code INSERT IGNORE INTO t_dedup}（第二层 DB 去重）配合使用，
+ * 实现 DEV_SPEC §6.2 描述的双层去重方案：
  *
  * <ul>
- *   <li>Caffeine is in-process only and may miss right after a restart,
- *       but catches ~99% of duplicates without hitting the DB.</li>
- *   <li>The DB table is authoritative and race-free across instances.</li>
+ *   <li>Caffeine 仅存在于当前进程，重启后失效，但可拦截 ~99% 的重复事件而无需访问 DB。</li>
+ *   <li>DB 表是跨实例的权威去重账本，具备竞争安全性。</li>
  * </ul>
  *
- * <p>Caffeine only answers "might-have-seen" (positive cache).  We do NOT
- * treat a miss here as "never seen" -- the DB is always consulted.
+ * <p>Caffeine 只回答"可能已见过"（正向缓存），
+ * 未命中时 <strong>不</strong>意味着"从未见过"——DB 仍需查询。
  */
 @Slf4j
 @Service
@@ -43,16 +42,15 @@ public class DedupService {
                 .expireAfterWrite(Duration.ofMinutes(ttlMinutes))
                 .recordStats()
                 .build();
-        log.info("Caffeine dedup cache initialised: maxSize={}, ttl={}min",
-                maxSize, ttlMinutes);
+        log.info("Caffeine 去重缓存初始化完成：maxSize={}，ttl={}min", maxSize, ttlMinutes);
     }
 
-    /** @return true iff the cache has seen this eventId recently. */
+    /** @return true 表示缓存最近已见过该 eventId。 */
     public boolean isCachedHit(String eventId) {
         return recentlySeen.getIfPresent(eventId) != null;
     }
 
-    /** Record that we have successfully processed this eventId. */
+    /** 标记该 eventId 已成功处理。 */
     public void markSeen(String eventId) {
         recentlySeen.put(eventId, Boolean.TRUE);
     }

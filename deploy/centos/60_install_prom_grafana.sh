@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# 60_install_prom_grafana.sh --- Prometheus 2.45.x + Grafana 10.1.x
-# See DEV_SPEC §8.4. Runs on NODE_ID=2 by default (monitoring node), configurable.
+# 60_install_prom_grafana.sh --- Prometheus 2.45.x + Grafana 10.1.x。
+# 参见 DEV_SPEC §8.4。默认在 NODE_ID=2（监控节点）运行，可通过变量覆盖。
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,7 +13,7 @@ load_cluster_env
 
 : "${ORCP_MONITORING_NODE_ID:=2}"
 if [[ "${NODE_ID}" != "${ORCP_MONITORING_NODE_ID}" ]]; then
-    log_info "Monitoring stack only runs on node-${ORCP_MONITORING_NODE_ID} (NODE_ID=${NODE_ID}); skipping."
+    log_info "监控栈仅在 node-${ORCP_MONITORING_NODE_ID} 运行（当前 NODE_ID=${NODE_ID}），跳过。"
     exit 0
 fi
 
@@ -28,7 +28,7 @@ PROM_HOME_LINK=/opt/prometheus
 PROM_DATA=/data/prometheus
 
 if [[ ! -d "${PROM_EXTRACT}" ]]; then
-    log_info "Downloading Prometheus ${PROM_VERSION}"
+    log_info "下载 Prometheus ${PROM_VERSION}"
     TMP_TAR="${ORCP_DOWNLOAD_CACHE}/${PROM_TARBALL}"
     download_to "${PROM_URL}" "${TMP_TAR}"
     tar -xzf "${TMP_TAR}" -C /opt
@@ -38,11 +38,11 @@ ln -s "${PROM_EXTRACT}" "${PROM_HOME_LINK}"
 ensure_dir "${PROM_DATA}" "${ORCP_USER}:${ORCP_GROUP}" 0750
 chown -R "${ORCP_USER}:${ORCP_GROUP}" "${PROM_EXTRACT}"
 
-log_info "Rendering Prometheus scrape config"
+log_info "渲染 Prometheus 抓取配置"
 PROM_CONF="${PROM_HOME_LINK}/prometheus.yml"
 {
     cat <<'EOF'
-# Managed by ORCP deploy/centos/60_install_prom_grafana.sh
+# 由 ORCP deploy/centos/60_install_prom_grafana.sh 管理
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
@@ -57,10 +57,10 @@ scrape_configs:
     static_configs:
       - targets:
 EOF
+    # Flink PrometheusReporter 使用端口范围 9250-9260（参见 flink-conf.yaml）。
     for i in $(seq 1 "${NODE_COUNT}"); do
         host="$(host_for "${i}")"
         [[ -z "${host}" ]] && continue
-        # PrometheusReporter uses port range 9250-9260 (see flink-conf.yaml).
         for port in 9250 9251 9252 9253; do
             echo "        - '${host}:${port}'"
         done
@@ -72,7 +72,7 @@ EOF
     static_configs:
       - targets:
 EOF
-    # orcp-ingest on NODE_3 port 8080, orcp-admin on NODE_3 port 8081 per DEV_SPEC §3.
+    # orcp-ingest 在 NODE_3 的 8080 端口，orcp-admin 在 NODE_3 的 8081 端口（参见 DEV_SPEC §3）。
     ingest_host="$(host_for 3)"
     admin_host="$(host_for 3)"
     [[ -n "${ingest_host}" ]] && echo "        - '${ingest_host}:8080'"
@@ -80,10 +80,10 @@ EOF
 } >"${PROM_CONF}"
 chown "${ORCP_USER}:${ORCP_GROUP}" "${PROM_CONF}"
 
-log_info "Installing systemd unit prometheus.service"
+log_info "安装 systemd 单元 prometheus.service"
 cat >/etc/systemd/system/prometheus.service <<EOF
 [Unit]
-Description=Prometheus
+Description=Prometheus（ORCP 监控）
 After=network-online.target
 
 [Service]
@@ -107,7 +107,7 @@ systemctl enable --now prometheus.service
 # ---------------------------------------------------------------------------
 # Grafana
 # ---------------------------------------------------------------------------
-log_info "Installing Grafana OSS"
+log_info "安装 Grafana OSS"
 cat >/etc/yum.repos.d/grafana.repo <<'EOF'
 [grafana]
 name=grafana
@@ -126,9 +126,9 @@ else
     yum -y install grafana || yum -y --nogpgcheck install grafana
 fi
 
-log_info "Enabling grafana-server (default port 3000, admin/admin on first login)"
+log_info "启用 grafana-server（默认端口 3000，首次登录 admin/admin，请立即修改）"
 systemctl enable --now grafana-server
 
-log_info "60_install_prom_grafana.sh finished successfully"
+log_info "60_install_prom_grafana.sh 执行完毕"
 log_info "Prometheus: http://$(host_for "${NODE_ID}"):9090"
-log_info "Grafana:    http://$(host_for "${NODE_ID}"):3000 (admin/admin -- change on first login)"
+log_info "Grafana:    http://$(host_for "${NODE_ID}"):3000（admin/admin —— 首次登录后请修改密码）"

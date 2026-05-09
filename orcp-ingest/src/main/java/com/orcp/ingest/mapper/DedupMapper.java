@@ -9,20 +9,18 @@ import org.apache.ibatis.annotations.Param;
 import java.time.LocalDateTime;
 
 /**
- * MyBatis-Plus mapper for {@code orcp_detail.t_dedup}.
+ * {@code orcp_detail.t_dedup} 的 MyBatis-Plus Mapper。
  *
- * <p>We hand-write {@link #insertIgnore(String, LocalDateTime)} instead of
- * relying on the default {@code insert}, because {@code INSERT IGNORE}
- * silently skips the row when the primary key already exists and returns 0
- * affected rows.  That is exactly the atomic "claim the eventId" primitive
- * we want for dedup, with no try/catch on a duplicate-key exception.
+ * <p>手写 {@link #insertIgnore(String, LocalDateTime)} 而非使用默认的 {@code insert}，
+ * 原因：主键已存在时 {@code INSERT IGNORE} 静默跳过并返回 0，
+ * 这正是原子"声明 eventId 所有权"原语所需的行为，无需捕获重复键异常。
  */
 @Mapper
 public interface DedupMapper extends BaseMapper<DedupEntity> {
 
     /**
-     * @return 1 if this eventId was inserted (caller is the owner), 0 if
-     *         another thread/process already owns it (duplicate).
+     * @return 1 表示本次调用成为该 eventId 的所有者（应执行后续转发）；
+     *         0 表示其他线程/进程已先行写入（重复，直接跳过）。
      */
     @Insert("INSERT IGNORE INTO t_dedup (event_id, created_at) VALUES (#{eventId}, #{createdAt})")
     int insertIgnore(@Param("eventId") String eventId,

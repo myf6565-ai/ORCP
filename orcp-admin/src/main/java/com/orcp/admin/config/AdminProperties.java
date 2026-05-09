@@ -5,10 +5,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * Configuration bundle for every external the admin service touches.
+ * 管控服务涉及的所有外部依赖配置集合。
  *
- * <p>Values are bound from {@code application.yml} (defaults) and overridden
- * by Nacos data-id {@code orcp-admin.yaml} at bootstrap time.
+ * <p>各属性从 {@code application.yml}（默认值）读取，
+ * 并在启动时由 Nacos data-id {@code orcp-admin.yaml} 覆盖。
  */
 @Data
 @Component
@@ -23,12 +23,12 @@ public class AdminProperties {
 
     @Data
     public static class Flink {
-        /** REST endpoint for the JobManager, e.g. http://node-1:8081 */
+        /** JobManager REST 端点，例如 http://node-1:8081 */
         private String restUrl = "http://node-1:8081";
-        /** Bearer timeout, milliseconds, applied to every HTTP call. */
+        /** 连接超时（毫秒），适用于每次 HTTP 调用。 */
         private int connectTimeoutMs = 3_000;
         private int readTimeoutMs = 30_000;
-        /** Long-running call limit (jar upload + job submit). */
+        /** 长耗时调用（jar 上传 + 作业提交）的超时上限。 */
         private int writeTimeoutMs = 120_000;
     }
 
@@ -48,7 +48,7 @@ public class AdminProperties {
 
     @Data
     public static class Oceanbase {
-        /** Note: keep URL on the jdbc:mysql:// scheme (see DEV_SPEC §11 + Stage E). */
+        /** URL 前缀使用 jdbc:mysql://（参见 DEV_SPEC §11 及阶段 E 说明）。 */
         private String url = "jdbc:mysql://ob-host:2881/orcp_dw?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai";
         private String user = "orcp_rw@tenant#cluster";
         private String password = "ChangeMe_ob_1!";
@@ -57,11 +57,11 @@ public class AdminProperties {
 
     @Data
     public static class Job {
-        /** Default entry class used when the operator omits it. */
+        /** 运营省略 entryClass 时使用的默认入口类。 */
         private String defaultEntryClass = "com.orcp.flink.OrcpFlinkJob";
-        /** Default parallelism applied to every submit that omits it. */
+        /** 未指定并行度时的默认值。 */
         private int defaultParallelism = 2;
-        /** Where savepoints land.  Passed as target-directory to Flink REST. */
+        /** savepoint 存放目录，作为 target-directory 传递给 Flink REST。 */
         private String savepointDir = "file:///data/flink/savepoints";
     }
 }

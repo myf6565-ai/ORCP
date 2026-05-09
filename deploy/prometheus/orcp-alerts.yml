@@ -1,20 +1,18 @@
-# Prometheus alert rules for ORCP.  Copy to the Prometheus rules dir and
-# reference from prometheus.yml:
+# ORCP Prometheus 告警规则。
+# 将本文件复制到 Prometheus rules 目录并在 prometheus.yml 中引用：
 #
 #   rule_files:
 #     - /opt/prometheus/rules/orcp-alerts.yml
 #
-# Alert thresholds come from DEV_SPEC §8.6.  Keep the 'for' durations long
-# enough to survive normal restarts: we want alerts on real outages, not
-# rolling deploys.
+# 告警阈值来自 DEV_SPEC §8.6。for 持续时长足够跨越正常重启，
+# 确保只对真实故障告警，而非滚动发布触发。
 
 groups:
   - name: orcp.flink
     interval: 30s
     rules:
-      # Flink job not running for 2 minutes.  The flink_jobmanager_job_uptime
-      # metric reports uptime in ms while the job is alive and drops to 0
-      # the instant the job fails.  A healthy job climbs monotonically.
+      # Flink 作业已停止运行超过 2 分钟。
+      # flink_jobmanager_job_uptime 在作业存活时单调递增，作业失败时降为 0。
       - alert: OrcpFlinkJobDown
         expr: flink_jobmanager_job_uptime == 0
         for: 2m
@@ -22,13 +20,12 @@ groups:
           severity: critical
           service: orcp-flink
         annotations:
-          summary: "Flink job {{ $labels.job_name }} is not running"
+          summary: "Flink 作业 {{ $labels.job_name }} 未在运行"
           description: |
-            The Flink job {{ $labels.job_name }} reports uptime=0 for 2+ minutes.
-            Check the JobManager: http://{{ $labels.instance }}:8081/jobs/overview
+            Flink 作业 {{ $labels.job_name }} 的 uptime 持续 2+ 分钟为 0。
+            请检查 JobManager：http://{{ $labels.instance }}:8081/jobs/overview
 
-      # Too many restarts in a short window usually means a non-transient
-      # failure that fixed-delay is just masking.
+      # 短时间内重启次数过多，通常意味着 fixed-delay 掩盖了持续性故障。
       - alert: OrcpFlinkJobRestartingRepeatedly
         expr: increase(flink_jobmanager_job_numRestarts_total[5m]) > 3
         for: 0m
@@ -36,18 +33,16 @@ groups:
           severity: warning
           service: orcp-flink
         annotations:
-          summary: "Flink job {{ $labels.job_name }} restarted > 3 times in 5m"
+          summary: "Flink 作业 {{ $labels.job_name }} 在 5 分钟内重启 > 3 次"
           description: |
-            More than 3 restarts for job {{ $labels.job_name }} in the last 5 minutes.
-            Likely a persistent error (schema mismatch, DB connectivity, ...).
+            作业 {{ $labels.job_name }} 在过去 5 分钟内重启超过 3 次。
+            可能原因：Schema 不匹配、DB 连接中断等持续性错误。
 
   - name: orcp.kafka
     interval: 30s
     rules:
-      # Consumer lag threshold per DEV_SPEC §8.6.  Kafka exposes lag as
-      # flink_taskmanager_job_task_operator_currentFetchEventTimeLag for
-      # Flink consumers; if you later wire in kafka_exporter this can
-      # target kafka_consumergroup_lag instead.
+      # 消费者积压阈值（DEV_SPEC §8.6）。
+      # 如后续接入 kafka_exporter，可将指标替换为 kafka_consumergroup_lag。
       - alert: OrcpKafkaConsumerLagHigh
         expr: max by (job_name) (flink_taskmanager_job_task_operator_pendingRecords) > 10000
         for: 5m
@@ -55,11 +50,10 @@ groups:
           severity: warning
           service: orcp-kafka
         annotations:
-          summary: "Flink consumer lag on {{ $labels.job_name }} > 10k records"
+          summary: "作业 {{ $labels.job_name }} 的 Kafka 消费积压 > 10k 条"
           description: |
-            The Kafka source for job {{ $labels.job_name }} has more than
-            10,000 pending records for 5+ minutes.  Check producer rate
-            vs. TaskManager slot count.
+            作业 {{ $labels.job_name }} 的 Kafka Source 积压超过 10,000 条记录，
+            且持续 5+ 分钟。请检查生产者速率与 TaskManager slot 数量是否匹配。
 
   - name: orcp.spring
     interval: 30s
@@ -71,16 +65,12 @@ groups:
           severity: critical
           service: orcp-spring
         annotations:
-          summary: "Spring service {{ $labels.instance }} is down"
+          summary: "Spring 服务 {{ $labels.instance }} 已下线"
           description: |
-            Prometheus cannot scrape {{ $labels.instance }} ({{ $labels.job }})
-            for 1+ minute.  Check: systemctl status orcp-ingest orcp-admin
+            Prometheus 无法抓取 {{ $labels.instance }}（{{ $labels.job }}）超过 1 分钟。
+            请检查：systemctl status orcp-ingest orcp-admin
 
-      # OceanBase write failure ratio exceeds 1%.  orcp-ingest exports
-      # orcp_ingest_persisted_total (success) and the Flink job's JDBC
-      # sink exports flink_jobmanager_job_numFailedWriteRecords; here we
-      # look at the ingest side.  Tune the metric name if your dashboards
-      # pick different aliases.
+      # OceanBase 写入失败率超过 1%（自定义 Micrometer 计数器）。
       - alert: OrcpIngestFailureRateHigh
         expr: |
           rate(orcp_ingest_persisted_total{result="failed"}[5m])
@@ -92,7 +82,7 @@ groups:
           severity: warning
           service: orcp-ingest
         annotations:
-          summary: "orcp-ingest failure rate > 1% over 5m"
+          summary: "orcp-ingest 失败率在 5 分钟内 > 1%"
           description: |
-            More than 1% of received events are failing to persist/forward.
-            Inspect orcp-ingest logs at /var/log/orcp/orcp-ingest.log.
+            超过 1% 的接收事件未能成功持久化/转发。
+            请查看 /var/log/orcp/orcp-ingest.log 中的错误日志。

@@ -22,15 +22,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Wires the Kafka consumer + producer with the settings required by
- * DEV_SPEC §6.2.
+ * Kafka 消费者与生产者配置，满足 DEV_SPEC §6.2 要求。
  *
  * <ul>
- *   <li>Consumer: manual ack, {@code read_committed}, {@code max.poll.records=500},
- *       {@code enable.auto.commit=false}.</li>
- *   <li>Producer: idempotent, {@code acks=all}, retries, bounded in-flight.</li>
- *   <li>Container concurrency: {@value #DEFAULT_CONCURRENCY} (matches the
- *       default partition count of 3 for orcp.src.demo).</li>
+ *   <li>消费者：手动 ack、{@code read_committed} 隔离级别、
+ *       {@code max.poll.records=500}、{@code enable.auto.commit=false}。</li>
+ *   <li>生产者：幂等、{@code acks=all}、有界 in-flight 请求数。</li>
+ *   <li>容器并发度：{@value #DEFAULT_CONCURRENCY}（与 orcp.src.demo 默认分区数 3 对齐）。</li>
  * </ul>
  */
 @Slf4j
@@ -54,7 +52,7 @@ public class KafkaConfig {
     private int concurrency;
 
     // ------------------------------------------------------------------
-    // Consumer
+    // 消费者
     // ------------------------------------------------------------------
 
     @Bean
@@ -68,8 +66,7 @@ public class KafkaConfig {
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecords);
         props.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed");
-        // Give the listener room to do the DB transaction + forward without
-        // tripping max.poll.interval.ms during a slow MySQL.
+        // 给 listener 留出执行 DB 事务 + 转发的时间，避免慢 MySQL 触发 max.poll.interval.ms 超时。
         props.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 300_000);
         return new DefaultKafkaConsumerFactory<>(props);
     }
@@ -80,15 +77,15 @@ public class KafkaConfig {
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
         factory.setConcurrency(concurrency);
-        // MANUAL_IMMEDIATE: listener decides when the offset is committed.
+        // MANUAL_IMMEDIATE：由 listener 决定何时提交 offset。
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
         factory.setAutoStartup(true);
-        log.info("Kafka listener container configured: concurrency={}, ackMode=MANUAL_IMMEDIATE", concurrency);
+        log.info("Kafka listener 容器已配置：concurrency={}，ackMode=MANUAL_IMMEDIATE", concurrency);
         return factory;
     }
 
     // ------------------------------------------------------------------
-    // Producer
+    // 生产者
     // ------------------------------------------------------------------
 
     @Bean
@@ -100,8 +97,7 @@ public class KafkaConfig {
         props.put(ProducerConfig.ACKS_CONFIG, "all");
         props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
         props.put(ProducerConfig.RETRIES_CONFIG, 10);
-        // With idempotence, the broker enforces max.in.flight<=5 on its own;
-        // we keep the value explicit to match DEV_SPEC §6.2.
+        // 启用幂等性时，broker 会自行强制 max.in.flight<=5；此处显式设置与 DEV_SPEC §6.2 保持一致。
         props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
         props.put(ProducerConfig.LINGER_MS_CONFIG, 5);
         return new DefaultKafkaProducerFactory<>(props);

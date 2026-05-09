@@ -1,5 +1,5 @@
-# Nacos config client needs to be active before Spring context refresh,
-# hence it must live in bootstrap.yml (and NOT application.yml).
+# Nacos 配置客户端需要在 Spring 上下文刷新之前激活，
+# 因此必须放在 bootstrap.yml 中（而非 application.yml）。
 spring:
   application:
     name: orcp-ingest

@@ -4,7 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 
 /**
- * Simple {@code {"jobId": "..."}} body returned from submit/run endpoints.
+ * submit / run 端点返回的简单响应体，格式为 {@code {"jobId": "..."}}。
  */
 @Data
 @AllArgsConstructor

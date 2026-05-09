@@ -20,25 +20,22 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * Publishes normalised events to {@code orcp.mid.events} for Flink to
- * consume.
+ * 将标准化事件发布到 {@code orcp.mid.events}，供 Flink 作业消费。
  *
- * <p>The mid-topic schema is intentionally NOT the same as the source DTO:
- * Stage E's Flink SQL source DDL expects snake_case column names and an
- * ISO-8601 timestamp with timezone (TIMESTAMP_LTZ(3)).  Keeping the
- * translation here is explicit and avoids coupling the Java DTO to the
- * streaming wire format.
+ * <p>mid-topic 的 wire schema 与源 DTO 刻意不同：
+ * 阶段 E 的 Flink SQL source DDL 期望 snake_case 字段名和带时区的 ISO-8601 时间戳
+ * （TIMESTAMP_LTZ(3)）。在此处显式做转换，可避免将 Java DTO 与流式 wire 格式耦合。
  *
- * <p>We publish synchronously (block on broker ack) so the listener can
- * only acknowledge the source offset after the mid record is durably
- * stored.  A failure here bubbles up and triggers source redelivery --
- * safe because dedup makes the replay a no-op.
+ * <p>采用同步发送（阻塞等待 broker ack），确保 listener 只在 mid 消息持久化后
+ * 才提交源 offset。此处失败会向上冒泡，触发源消息重投——
+ * 去重层使重投成为空操作，端到端安全。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ForwardService {
 
+    /** ISO-8601 UTC 毫秒格式，与 Flink TIMESTAMP_LTZ(3) 解析格式对齐。 */
     private static final DateTimeFormatter ISO_MILLIS_UTC = DateTimeFormatter
             .ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
             .withZone(ZoneId.of("UTC"));
@@ -53,11 +50,10 @@ public class ForwardService {
     private long sendTimeoutSeconds;
 
     /**
-     * Send the event to the mid topic and block until the broker acks it.
+     * 将事件发送到 mid topic 并阻塞直到 broker 确认。
      *
-     * <p>The partition key is {@code bizKey} so all events for one order
-     * land on the same partition, which preserves per-key ordering for
-     * downstream consumers.
+     * <p>分区键为 {@code bizKey}，确保同一订单的所有事件落在同一分区，
+     * 保证下游消费者的按键有序性。
      */
     public void forward(SourceEvent event) {
         final String key = event.getBizKey();
@@ -68,7 +64,7 @@ public class ForwardService {
                     .send(midTopic, key, payload)
                     .get(sendTimeoutSeconds, TimeUnit.SECONDS);
             if (log.isDebugEnabled()) {
-                log.debug("forwarded eventId={} -> {}-{}@{}",
+                log.debug("已转发 eventId={} -> {}-{}@{}",
                         event.getEventId(),
                         result.getRecordMetadata().topic(),
                         result.getRecordMetadata().partition(),
@@ -76,17 +72,17 @@ public class ForwardService {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IngestException("Interrupted while sending to " + midTopic, e);
+            throw new IngestException("发送到 " + midTopic + " 时被中断", e);
         } catch (ExecutionException | TimeoutException e) {
             throw new IngestException(
-                    "Failed to forward eventId=" + event.getEventId() + " to " + midTopic, e);
+                    "转发 eventId=" + event.getEventId() + " 到 " + midTopic + " 失败", e);
         }
     }
 
     /**
-     * Build the wire payload consumed by Stage E's Flink Kafka source DDL.
+     * 构建 mid topic 消费端（阶段 E Flink Kafka source DDL）期望的 wire payload。
      *
-     * <p>Contract (must stay in lockstep with {@code orcp-flink-job/src/main/resources/sql/01_source_kafka.sql}):
+     * <p>契约（必须与 {@code orcp-flink-job/src/main/resources/sql/01_source_kafka.sql} 保持一致）：
      * <pre>
      * {
      *   "event_id":    "...",
@@ -104,19 +100,21 @@ public class ForwardService {
         wire.put("biz_type", event.getBizType());
         wire.put("biz_key", event.getBizKey());
         wire.put("customer_id", event.getCustomerId());
-        // Keep the amount as a string so downstream parsers preserve the
-        // exact DECIMAL(18,4) scale without JSON-number precision loss.
+        // amount 以字符串形式传输，保留 DECIMAL(18,4) 精度，避免 JSON number 精度损失。
         wire.put("amount",
                 event.getAmount() != null ? event.getAmount().toPlainString() : null);
         wire.put("event_time", formatEventTime(event));
         try {
             return objectMapper.writeValueAsString(wire);
         } catch (Exception e) {
-            throw new IngestException("Cannot serialise eventId=" + event.getEventId(), e);
+            throw new IngestException("序列化 eventId=" + event.getEventId() + " 失败", e);
         }
     }
 
-    /** Renders eventTime (Asia/Shanghai local) as ISO-8601 UTC, e.g. 2026-05-09T02:00:00.000Z. */
+    /**
+     * 将 eventTime（Asia/Shanghai 本地时间）转换为 ISO-8601 UTC 字符串，
+     * 例如 2026-05-09T02:00:00.000Z。
+     */
     private static String formatEventTime(SourceEvent event) {
         if (event.getEventTime() == null) {
             return ISO_MILLIS_UTC.format(Instant.now());

@@ -4,9 +4,9 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 
 /**
- * Returned from savepoint / stop-with-savepoint triggers.  The operator
- * polls {@code GET /api/jobs/{jobId}/savepoints/{requestId}} for the
- * eventual location.
+ * savepoint 触发 / stop-with-savepoint 请求的响应体。
+ * 运维人员通过 {@code GET /api/jobs/{jobId}/savepoints/{requestId}}
+ * 轮询直到获得最终 savepoint 路径。
  */
 @Data
 @AllArgsConstructor
