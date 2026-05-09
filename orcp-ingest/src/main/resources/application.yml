@@ -1,0 +1,57 @@
+# Static fallback configuration. Runtime values (Kafka / DB endpoints,
+# credentials) should be overridden by the Nacos data-id
+# "orcp-ingest.yaml" in Stage D.
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:node-1:9092,node-2:9092,node-3:9092}
+    consumer:
+      group-id: orcp-ingest
+      enable-auto-commit: false
+      max-poll-records: 500
+      properties:
+        isolation.level: read_committed
+    listener:
+      ack-mode: MANUAL_IMMEDIATE
+      concurrency: 3
+    producer:
+      acks: all
+      retries: 10
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://node-1:3306/orcp_detail?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8mb4}
+    username: ${MYSQL_USER:orcp_rw}
+    password: ${MYSQL_PASSWORD:changeme}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 5000
+
+orcp:
+  kafka:
+    src-topic: ${ORCP_SRC_TOPIC:orcp.src.demo}
+    mid-topic: orcp.mid.events
+  dedup:
+    caffeine-max-size: 10000
+    caffeine-ttl-minutes: 10

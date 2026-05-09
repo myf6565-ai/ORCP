@@ -1,0 +1,30 @@
+# Maven
+target/
+*.jar
+*.war
+*.class
+dependency-reduced-pom.xml
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+/var/log/
+
+# Local env
+.env
+.env.local
+scripts/env.local.sh

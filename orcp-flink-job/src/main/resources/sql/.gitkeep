@@ -1,0 +1,2 @@
+# SQL files (01_source_kafka.sql, 02_dim_mysql.sql, 03_sink_oceanbase.sql,
+# 10_pipeline.sql) will be added in Stage E. See docs/DEV_SPEC.md section 6.3.

@@ -1,0 +1,19 @@
+# Nacos config client needs to be active before Spring context refresh,
+# hence it must live in bootstrap.yml (and NOT application.yml).
+spring:
+  application:
+    name: orcp-ingest
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER:node-1:8848}
+        namespace: ${NACOS_NAMESPACE:}
+        group: ORCP_GROUP
+      config:
+        server-addr: ${NACOS_SERVER:node-1:8848}
+        namespace: ${NACOS_NAMESPACE:}
+        group: ORCP_GROUP
+        file-extension: yaml
+        refresh-enabled: true

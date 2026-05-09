@@ -1,0 +1,26 @@
+server:
+  port: 8081
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+
+orcp:
+  flink:
+    rest-url: ${FLINK_REST:http://node-1:8081}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:node-1:9092,node-2:9092,node-3:9092}
+  mysql:
+    url: ${MYSQL_URL:jdbc:mysql://node-1:3306/orcp_detail?useSSL=false&serverTimezone=Asia/Shanghai}
+    user: ${MYSQL_USER:orcp_ro}
+    password: ${MYSQL_PASSWORD:changeme}
+  oceanbase:
+    url: ${OB_URL:jdbc:oceanbase://ob-host:2883/orcp_dw?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    user: ${OB_USER:orcp_rw@tenant#cluster}
+    password: ${OB_PASSWORD:changeme}
