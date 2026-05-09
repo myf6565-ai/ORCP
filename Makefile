@@ -21,6 +21,7 @@ help:
 	@echo "  make tree             - mvn dependency:tree"
 	@echo "  make deploy-ingest    - scp orcp-ingest jar and restart systemd (Stage D+)"
 	@echo "  make deploy-admin     - scp orcp-admin  jar and restart systemd (Stage F+)"
+	@echo "  make gen-events       - run scripts/gen_events.py (Stage C+, set ARGS='--count 100')"
 	@echo "  make submit-flink     - run scripts/submit_job.sh           (Stage E+)"
 	@echo "  make savepoint JOB=X  - run scripts/savepoint.sh JOB=X      (Stage E+)"
 	@echo "  make cancel   JOB=X   - run scripts/cancel_job.sh JOB=X     (Stage E+)"
@@ -53,6 +54,11 @@ deploy-ingest:
 .PHONY: deploy-admin
 deploy-admin:
 	@echo "[TODO Stage F] scp orcp-admin/target/orcp-admin.jar + systemctl restart orcp-admin"
+
+.PHONY: gen-events
+gen-events:
+	@python3 -c 'import kafka' >/dev/null 2>&1 || pip install -r scripts/requirements.txt
+	python3 scripts/gen_events.py $(ARGS)
 
 .PHONY: submit-flink
 submit-flink:
