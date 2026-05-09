@@ -1,13 +1,12 @@
 #=============================================================================
-# ORCP Flink 1.17.2 configuration template.
+# ORCP Flink 1.17.2 配置模板。
 #
-# Placeholders replaced by deploy/centos/30_install_flink.sh at install time:
-#   __JM_HOST__         -> NODE_1_HOST (the JobManager host)
+# 以下占位符由 deploy/centos/30_install_flink.sh 在安装时替换：
+#   __JM_HOST__         -> NODE_1_HOST（JobManager 主机名）
 #   __CHECKPOINT_DIR__  -> /data/flink/checkpoints
 #   __SAVEPOINT_DIR__   -> /data/flink/savepoints
 #
-# Edit this file, not the rendered one on the servers -- run
-# 30_install_flink.sh again to re-render.
+# 请编辑本文件而非服务器上已渲染的副本，修改后重新执行 30_install_flink.sh 以重新渲染。
 #=============================================================================
 
 # ----- JobManager -----------------------------------------------------------
@@ -27,7 +26,7 @@ taskmanager.numberOfTaskSlots: 4
 
 parallelism.default: 2
 
-# ----- State + checkpoints --------------------------------------------------
+# ----- 状态与检查点 ---------------------------------------------------------
 state.backend: rocksdb
 state.backend.incremental: true
 state.checkpoints.dir: file://__CHECKPOINT_DIR__
@@ -37,25 +36,24 @@ execution.checkpointing.interval: 60 s
 execution.checkpointing.mode: EXACTLY_ONCE
 execution.checkpointing.min-pause: 30 s
 execution.checkpointing.timeout: 10 min
+# 取消作业时保留检查点，方便后续从断点恢复。
 execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
 
-# ----- Restart strategy -----------------------------------------------------
+# ----- 重启策略 -------------------------------------------------------------
 restart-strategy: fixed-delay
 restart-strategy.fixed-delay.attempts: 10
 restart-strategy.fixed-delay.delay: 30 s
 
-# ----- Prometheus metric reporter ------------------------------------------
-# The reporter jar (flink-metrics-prometheus-<version>.jar) is copied from
-# opt/ to lib/ by 30_install_flink.sh. The port range lets JM and multiple
-# TMs on the same host bind without conflict.
+# ----- Prometheus 指标上报 --------------------------------------------------
+# reporter jar（flink-metrics-prometheus-<version>.jar）由 30_install_flink.sh
+# 从 opt/ 复制到 lib/ 以激活。端口范围允许同主机上多个 JVM 不冲突绑定。
 metrics.reporters: prom
 metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
 metrics.reporter.prom.port: 9250-9260
 
-# ----- JVM ------------------------------------------------------------------
+# ----- JVM 参数 -------------------------------------------------------------
 env.java.opts.all: "-XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Dfile.encoding=UTF-8"
 
-# ----- Classloading ---------------------------------------------------------
-# child-first avoids version clashes between the cluster lib/ and job fat jars
-# for user-supplied libraries (e.g. Jackson).
+# ----- 类加载顺序 -----------------------------------------------------------
+# child-first 避免 Flink 集群 lib/ 与作业 fat jar 之间的版本冲突（如 Jackson）。
 classloader.resolve-order: child-first

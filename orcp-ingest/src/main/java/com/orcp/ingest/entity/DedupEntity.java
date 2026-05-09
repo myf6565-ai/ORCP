@@ -11,11 +11,10 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * Row in {@code orcp_detail.t_dedup}.  Mirrors the DDL from Stage C.
+ * {@code orcp_detail.t_dedup} 表的实体对象，与阶段 C DDL 对应。
  *
- * <p>The primary key is the business {@code eventId}, not an auto-increment
- * surrogate, so that {@code INSERT IGNORE} gives us race-free
- * "reserve-first-writer-wins" semantics for dedup.
+ * <p>主键为业务 {@code eventId}（非自增代理键），
+ * 配合 {@code INSERT IGNORE} 可实现原子的"首写者获胜"去重语义。
  */
 @Data
 @Builder

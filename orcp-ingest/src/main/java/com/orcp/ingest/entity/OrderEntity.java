@@ -1,5 +1,6 @@
 package com.orcp.ingest.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -13,10 +14,9 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Row in {@code orcp_detail.t_order}.  Column names match the Stage C DDL.
+ * {@code orcp_detail.t_order} 表的实体对象，字段名与阶段 C DDL 保持一致。
  *
- * <p>{@code orderId} is derived from the source bizKey so the fact table
- * keeps its natural business-id primary key instead of an auto-increment.
+ * <p>{@code orderId} 来自源事件的 bizKey，使用业务主键而非自增代理键。
  */
 @Data
 @Builder
@@ -41,6 +41,6 @@ public class OrderEntity {
     @TableField("created_at")
     private LocalDateTime createdAt;
 
-    @TableField(value = "updated_at", fill = com.baomidou.mybatisplus.annotation.FieldFill.UPDATE)
+    @TableField(value = "updated_at", fill = FieldFill.UPDATE)
     private LocalDateTime updatedAt;
 }

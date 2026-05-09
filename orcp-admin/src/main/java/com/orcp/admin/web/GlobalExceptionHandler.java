@@ -11,15 +11,14 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Turns raw exceptions into clean JSON error bodies.
+ * 将原始异常转换为统一的 JSON 错误响应体。
  *
- * <p>Status translation:
+ * <p>状态码映射规则：
  * <ul>
- *   <li>{@link IllegalArgumentException} -> 400 (client-side validation).</li>
- *   <li>{@link FlinkRestException} carrying a 4xx upstream code -> 502
- *       (we pass the JobManager's complaint along).</li>
- *   <li>{@link FlinkRestException} with status 0 (I/O / timeout) -> 504.</li>
- *   <li>Everything else -> 500 with no stack trace in the body.</li>
+ *   <li>{@link IllegalArgumentException} -> 400（客户端参数错误）。</li>
+ *   <li>{@link FlinkRestException} 携带 4xx 上游状态码 -> 502（上游拒绝请求）。</li>
+ *   <li>{@link FlinkRestException} 状态码为 0（I/O/超时）-> 504（网关超时）。</li>
+ *   <li>其他所有异常 -> 500，响应体中不暴露堆栈信息。</li>
  * </ul>
  */
 @Slf4j
@@ -33,7 +32,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(FlinkRestException.class)
     public ResponseEntity<Map<String, Object>> flinkUpstream(FlinkRestException e) {
-        log.warn("flink REST failure: {}", e.getMessage());
+        log.warn("Flink REST 调用失败：{}", e.getMessage());
         HttpStatus status = e.getStatusCode() == 0
                 ? HttpStatus.GATEWAY_TIMEOUT
                 : HttpStatus.BAD_GATEWAY;
@@ -45,7 +44,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> generic(Exception e) {
-        log.error("unhandled exception: {}", e.getMessage(), e);
+        log.error("未处理的异常：{}", e.getMessage(), e);
         return respond(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error",
                 e.getClass().getSimpleName() + ": " + e.getMessage(), null);
     }

@@ -25,13 +25,11 @@ import java.time.Duration;
 import java.util.Map;
 
 /**
- * Thin, typed wrapper around the Flink JobManager REST API.  Contains only
- * the calls the admin service actually uses; adding more should be
- * deliberate.
+ * Flink JobManager REST API 的轻量类型化封装。
+ * 仅封装管控服务实际需要的接口；新增调用应经过审慎设计。
  *
- * <p>Failure model: every non-2xx response raises {@link FlinkRestException}
- * carrying the upstream status + body, so the controller can translate it
- * into a 502/504 without inspecting OkHttp internals.
+ * <p>失败模型：所有非 2xx 响应均抛出 {@link FlinkRestException}，
+ * 携带上游状态码和响应体，供控制器翻译为 502/504 而无需检查 OkHttp 内部状态。
  */
 @Slf4j
 @Component
@@ -54,14 +52,14 @@ public class FlinkRestClient {
                 .writeTimeout(Duration.ofMillis(cfg.getWriteTimeoutMs()))
                 .retryOnConnectionFailure(true)
                 .build();
-        log.info("FlinkRestClient targeting {}", cfg.getRestUrl());
+        log.info("FlinkRestClient 目标：{}", cfg.getRestUrl());
     }
 
     // ------------------------------------------------------------------
-    // Health / info
+    // 健康 / 概览
     // ------------------------------------------------------------------
 
-    /** @return parsed {@code /overview} payload, or throws on any failure. */
+    /** @return 解析后的 {@code /overview} 响应，失败时抛出异常。 */
     public JsonNode overview() {
         return getJson("/overview");
     }
@@ -79,12 +77,12 @@ public class FlinkRestClient {
     }
 
     // ------------------------------------------------------------------
-    // Jar lifecycle
+    // Jar 生命周期
     // ------------------------------------------------------------------
 
     /**
-     * Uploads a jar and returns its Flink jar-id (the last path segment in
-     * the {@code filename} field of the response).  Rejects on any non-2xx.
+     * 上传 jar 并返回其 Flink jar-id（响应 {@code filename} 字段的最后一段路径）。
+     * 非 2xx 响应时拒绝请求。
      */
     public String uploadJar(MultipartFile jar) throws IOException {
         File tmp = File.createTempFile("orcp-upload-", ".jar");
@@ -99,14 +97,14 @@ public class FlinkRestClient {
                     .build();
             JsonNode resp = postMultipart("/jars/upload", body);
             String filename = resp.path("filename").asText("");
-            // filename is returned as an absolute path; the jar-id is just the last segment.
+            // filename 是绝对路径；jar-id 是最后一段。
             int slash = filename.lastIndexOf('/');
             String jarId = slash >= 0 ? filename.substring(slash + 1) : filename;
             if (jarId.isEmpty()) {
                 throw new FlinkRestException("upload", 200,
-                        "no filename in upload response: " + resp.toString());
+                        "上传响应中无 filename：" + resp.toString());
             }
-            log.info("Uploaded jar ({} bytes) to Flink as jar-id={}", jar.getSize(), jarId);
+            log.info("jar 已上传（{} 字节），Flink jar-id={}", jar.getSize(), jarId);
             return jarId;
         } finally {
             //noinspection ResultOfMethodCallIgnored
@@ -115,10 +113,10 @@ public class FlinkRestClient {
     }
 
     /**
-     * Runs a previously-uploaded jar.  Returns the Flink {@code jobid}.
+     * 运行已上传的 jar，返回 Flink {@code jobid}。
      *
-     * <p>{@code programArgs} is a single string (Flink parses it with its own
-     * shell-like splitter).  {@code savepointPath} is optional.
+     * <p>{@code programArgs} 是一个字符串（Flink 使用自身解析器分割），
+     * {@code savepointPath} 可为 null（全新启动）。
      */
     public String runJar(String jarId,
                          String entryClass,
@@ -140,17 +138,17 @@ public class FlinkRestClient {
         JsonNode resp = postJson("/jars/" + jarId + "/run", body);
         String jobId = resp.path("jobid").asText("");
         if (jobId.isEmpty()) {
-            throw new FlinkRestException("run", 200, "no jobid in run response: " + resp);
+            throw new FlinkRestException("run", 200, "运行响应中无 jobid：" + resp);
         }
-        log.info("Submitted job jar-id={} -> job-id={}", jarId, jobId);
+        log.info("已提交作业 jar-id={} -> job-id={}", jarId, jobId);
         return jobId;
     }
 
     // ------------------------------------------------------------------
-    // Savepoint / stop / cancel
+    // Savepoint / 停止 / 取消
     // ------------------------------------------------------------------
 
-    /** Triggers a savepoint.  Returns the savepoint {@code request-id}. */
+    /** 触发 savepoint，返回 {@code request-id}。 */
     public String triggerSavepoint(String jobId, String targetDirectory) {
         Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("target-directory", targetDirectory);
@@ -159,7 +157,7 @@ public class FlinkRestClient {
         return requireRequestId(resp, "savepoint");
     }
 
-    /** Stops a job with a final savepoint.  Returns the request-id to poll. */
+    /** 带 savepoint 优雅停止作业，返回 request-id 供轮询。 */
     public String stopWithSavepoint(String jobId, String targetDirectory, boolean drain) {
         Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("targetDirectory", targetDirectory);
@@ -172,9 +170,9 @@ public class FlinkRestClient {
         return getJson("/jobs/" + jobId + "/savepoints/" + requestId);
     }
 
-    /** Hard cancel without a savepoint.  Use only for recovery. */
+    /** 硬取消（不触发 savepoint），仅用于故障恢复场景。 */
     public void cancel(String jobId) {
-        // Flink REST returns 202 Accepted with an empty body for PATCH ?mode=cancel.
+        // Flink REST 对 PATCH ?mode=cancel 返回 202 空响应体。
         execute(new Request.Builder()
                 .url(resolve("/jobs/" + jobId + "?mode=cancel"))
                 .patch(RequestBody.create(new byte[0], null))
@@ -182,7 +180,7 @@ public class FlinkRestClient {
     }
 
     // ------------------------------------------------------------------
-    // HTTP helpers
+    // HTTP 辅助方法
     // ------------------------------------------------------------------
 
     private JsonNode getJson(String path) {
@@ -195,7 +193,7 @@ public class FlinkRestClient {
             return executeJson(new Request.Builder().url(resolve(path)).post(rb).build());
         } catch (IOException e) {
             throw new FlinkRestException("POST " + path, 0,
-                    "Failed to serialise request body: " + e.getMessage());
+                    "序列化请求体失败：" + e.getMessage());
         }
     }
 
@@ -213,7 +211,7 @@ public class FlinkRestClient {
             return objectMapper.readTree(text);
         } catch (IOException e) {
             throw new FlinkRestException(req.method() + " " + req.url().encodedPath(), 0,
-                    "I/O error: " + e.getMessage());
+                    "I/O 错误：" + e.getMessage());
         }
     }
 
@@ -234,7 +232,7 @@ public class FlinkRestClient {
         } catch (IOException e) {
             throw new FlinkRestException(
                     req.method() + " " + req.url().encodedPath(), 0,
-                    "I/O error: " + e.getMessage());
+                    "I/O 错误：" + e.getMessage());
         }
     }
 
@@ -249,7 +247,7 @@ public class FlinkRestClient {
     private static String requireRequestId(JsonNode resp, String what) {
         String id = resp.path("request-id").asText("");
         if (id.isEmpty()) {
-            throw new FlinkRestException(what, 200, "no request-id in response: " + resp);
+            throw new FlinkRestException(what, 200, "响应中无 request-id：" + resp);
         }
         return id;
     }
@@ -263,13 +261,11 @@ public class FlinkRestClient {
                 out.write(buf, 0, n);
             }
         } finally {
-            // Ensure the tmp file is readable by our user only.
             //noinspection ResultOfMethodCallIgnored
             dest.setReadable(true, true);
         }
-        // Belt-and-braces: the OkHttp multipart wrapper opens the file on its own.
         if (!Files.exists(dest.toPath())) {
-            throw new IOException("tmp upload file vanished: " + dest);
+            throw new IOException("临时上传文件已消失：" + dest);
         }
     }
 }

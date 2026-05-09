@@ -1,12 +1,11 @@
 [Unit]
-Description=Nacos Server (ORCP, standalone)
+Description=Nacos 服务端（ORCP，standalone 模式）
 Documentation=https://nacos.io/
 Requires=network-online.target
 After=network-online.target
 
 [Service]
-# nacos startup.sh forks a background JVM and writes its pid file,
-# so we supervise it in forking mode.
+# nacos startup.sh 会 fork 后台 JVM 并写入 pid 文件，使用 forking 模式进行监控。
 Type=forking
 PIDFile=/opt/nacos/bin/nacos.pid
 User=orcp

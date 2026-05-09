@@ -24,16 +24,14 @@ import javax.validation.constraints.NotBlank;
 import java.io.IOException;
 
 /**
- * Operator-facing REST surface for the Flink control plane.
+ * 面向运维人员的 Flink 控制面 REST 接口。
  *
- * <p>All endpoints require Basic auth (see {@link com.orcp.admin.config.SecurityConfig}).
+ * <p>所有端点均需要 Basic 认证（参见 {@link com.orcp.admin.config.SecurityConfig}）。
  *
- * <p>Two submit flavours:
+ * <p>两种提交方式：
  * <ul>
- *   <li>{@code POST /api/jobs/submit} -- multipart upload + run in one call.
- *       Mirrors {@code scripts/submit_job.sh}; use for ad-hoc ops.</li>
- *   <li>{@code POST /api/jobs/upload} + {@code POST /api/jobs/run} -- two
- *       steps when you want to run the same jar with different params.</li>
+ *   <li>{@code POST /api/jobs/submit} -- multipart 上传 + 立即运行（与 scripts/submit_job.sh 等价，适合临时操作）。</li>
+ *   <li>{@code POST /api/jobs/upload} + {@code POST /api/jobs/run} -- 两步式，适合使用相同 jar 以不同参数多次提交。</li>
  * </ul>
  */
 @Slf4j
@@ -46,7 +44,7 @@ public class JobController {
     private final AdminProperties properties;
 
     // ------------------------------------------------------------------
-    // Upload + run
+    // 上传 + 运行
     // ------------------------------------------------------------------
 
     @PostMapping(path = "/upload", consumes = "multipart/form-data")
@@ -70,10 +68,8 @@ public class JobController {
     }
 
     /**
-     * Single-shot convenience: upload, then immediately run.  The upload is
-     * multipart and the run parameters are query / form fields -- we avoid a
-     * JSON + multipart mix because that requires separate @RequestPart
-     * per field, which obscures the shape.
+     * 一步式便捷接口：上传后立即运行。
+     * 运行参数通过 query/form 字段传递（避免混合 JSON + multipart 两种请求体格式）。
      */
     @PostMapping(path = "/submit", consumes = "multipart/form-data")
     public JobIdResponse submit(
@@ -96,13 +92,13 @@ public class JobController {
     }
 
     // ------------------------------------------------------------------
-    // Savepoint / cancel / status
+    // Savepoint / 取消 / 状态查询
     // ------------------------------------------------------------------
 
     @PostMapping("/{jobId}/savepoint")
     public SavepointResponse savepoint(@PathVariable("jobId") @NotBlank String jobId) {
         String requestId = flink.triggerSavepoint(jobId, properties.getJob().getSavepointDir());
-        log.info("savepoint triggered for job {} -> request {}", jobId, requestId);
+        log.info("已为作业 {} 触发 savepoint -> request {}", jobId, requestId);
         return new SavepointResponse(requestId);
     }
 
@@ -112,14 +108,14 @@ public class JobController {
             @RequestParam(value = "drain", defaultValue = "false") boolean drain) {
         String requestId = flink.stopWithSavepoint(
                 jobId, properties.getJob().getSavepointDir(), drain);
-        log.info("stop-with-savepoint for job {} -> request {}", jobId, requestId);
+        log.info("已为作业 {} 发起 stop-with-savepoint -> request {}", jobId, requestId);
         return new SavepointResponse(requestId);
     }
 
     @PostMapping("/{jobId}/cancel-hard")
     public ResponseEntity<Void> hardCancel(@PathVariable("jobId") @NotBlank String jobId) {
         flink.cancel(jobId);
-        log.warn("hard-cancel requested for job {} (no savepoint)", jobId);
+        log.warn("对作业 {} 执行硬取消（无 savepoint）", jobId);
         return ResponseEntity.accepted().build();
     }
 
@@ -140,21 +136,21 @@ public class JobController {
     }
 
     // ------------------------------------------------------------------
-    // Helpers
+    // 内部辅助方法
     // ------------------------------------------------------------------
 
     private static void validateSubmit(SubmitRequest r, boolean requireJarId) {
         if (r == null) {
-            throw new IllegalArgumentException("request body is required");
+            throw new IllegalArgumentException("请求体不能为空");
         }
         if (requireJarId && (r.getJarId() == null || r.getJarId().isEmpty())) {
-            throw new IllegalArgumentException("jarId is required; upload first or use /submit");
+            throw new IllegalArgumentException("jarId 是必填项；请先调用 /upload 或直接使用 /submit");
         }
     }
 
     private static void requireNonEmpty(MultipartFile jar) {
         if (jar == null || jar.isEmpty()) {
-            throw new IllegalArgumentException("jar part is required and must not be empty");
+            throw new IllegalArgumentException("jar 部分是必需的且不能为空");
         }
     }
 

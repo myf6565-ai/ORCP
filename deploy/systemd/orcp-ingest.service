@@ -1,5 +1,5 @@
 [Unit]
-Description=ORCP Ingest Service (Spring Boot, Kafka -> MySQL)
+Description=ORCP 摄入服务（Spring Boot，Kafka -> MySQL）
 Documentation=file:///opt/orcp/docs/DEV_SPEC.md
 Requires=network-online.target
 After=network-online.target kafka.service
@@ -12,13 +12,12 @@ WorkingDirectory=/opt/orcp/ingest
 Environment=JAVA_HOME=/opt/jdk-8
 Environment=ORCP_LOG_HOME=/var/log/orcp
 Environment=SPRING_PROFILES_ACTIVE=prod
-# -Xms matches -Xmx to keep the footprint predictable under systemd cgroup limits.
+# -Xms 与 -Xmx 保持一致，以便 systemd cgroup 限制下堆大小可预测。
 Environment="JAVA_OPTS=-Xms1g -Xmx1g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Dfile.encoding=UTF-8"
 
-# /etc/orcp/ingest.env holds node-specific overrides: KAFKA_BOOTSTRAP, MYSQL_URL,
-# ORCP_SRC_TOPIC, etc.  Create it out of /etc/orcp/ingest.env.example (not
-# shipped here) and keep it 0640 root:orcp.  Missing file is NOT fatal --
-# the application has sane defaults for dev.
+# /etc/orcp/ingest.env 存放节点特定变量：KAFKA_BOOTSTRAP、MYSQL_URL、
+# ORCP_SRC_TOPIC 等。请从 ingest.env.example 复制并修改，文件权限设为 0640 root:orcp。
+# 文件不存在时不影响服务启动（有默认值兜底）。
 EnvironmentFile=-/etc/orcp/ingest.env
 
 ExecStart=/opt/jdk-8/bin/java $JAVA_OPTS -jar /opt/orcp/ingest/orcp-ingest.jar
@@ -26,7 +25,7 @@ SuccessExitStatus=143
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=30
-# -15 gives the embedded Kafka consumer time to flush before the JVM dies.
+# SIGTERM 给 Kafka consumer 留出时间 flush 再退出。
 KillSignal=SIGTERM
 
 LimitNOFILE=65536

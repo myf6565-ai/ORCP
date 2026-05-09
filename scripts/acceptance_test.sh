@@ -1,53 +1,44 @@
 #!/usr/bin/env bash
 #
-# acceptance_test.sh -- runs the §8.8 acceptance checklist end-to-end.
+# acceptance_test.sh -- 端到端执行 §8.8 验收清单。
 #
-# This script DOES NOT stand up infrastructure; it assumes the full stack
-# from Stages B through F is already running and that the operator just
-# wants a machine-checkable pass/fail over the five DEV_SPEC §8.8 gates:
+# 本脚本 **不** 负责搭建基础设施，假设阶段 B–F 的完整栈已运行，
+# 运维人员只需对五个 DEV_SPEC §8.8 验收门做机器可核实的 PASS/FAIL 判断：
 #
-#   1. Happy path  : 1000 events -> mysql detail visible -> OB aggregate
-#                    visible within 90 seconds.
-#   2. Self-heal   : kill a TaskManager; within 2 minutes the job resumes
-#                    with no lost records (relies on exactly-once + upsert).
-#   3. No dup      : bounce orcp-ingest; re-delivered records are absorbed
-#                    by the t_dedup ledger (no growth in t_order).
-#   4. Observability: all subsystems UP from /api/health; Flink job visible
-#                    at /jobs/overview.
-#   5. Alerting    : stop the JobManager; one alert fires through the
-#                    webhook within 3 minutes.  (Verified by counting
-#                    Alertmanager /api/v2/alerts; webhook delivery is the
-#                    operator's decision to acknowledge.)
+#   1. 正常路径  : 1000 条事件 -> mysql 明细可见 -> OB 聚合可见（90 秒内）
+#   2. 自愈      : 杀死 TaskManager；2 分钟内作业恢复（exactly-once + upsert）
+#   3. 无重放    : 重启 orcp-ingest；重投事件被 t_dedup 吸收（t_order 不增长）
+#   4. 可观测性  : /api/health 所有子系统 UP；Flink /jobs/overview 可见
+#   5. 告警      : 停止 JobManager；3 分钟内 webhook 触发一条告警
 #
-# A check reports one of PASS / FAIL / SKIP and the overall exit code is
-# non-zero if ANY PASS-required check failed.  Checks marked optional
-# (like stage-2 self-heal) need explicit opt-in via flags.
+# 各检查输出 PASS / FAIL / SKIP；遇 FAIL 则整体退出码非零。
+# 标记为可选的破坏性检查需通过命令行标志显式启用。
 #
-# Usage:
-#   scripts/acceptance_test.sh                  # gates 1, 3, 4 only (no destructive ops)
-#   scripts/acceptance_test.sh --with-self-heal # also runs gate 2 (kills a TM)
-#   scripts/acceptance_test.sh --with-alerts    # also runs gate 5 (stops JM)
-#   scripts/acceptance_test.sh --all            # gates 1..5
+# 用法：
+#   scripts/acceptance_test.sh                   # 仅执行门 1、3、4（非破坏性）
+#   scripts/acceptance_test.sh --with-self-heal  # 增加门 2（杀 TM）
+#   scripts/acceptance_test.sh --with-alerts     # 增加门 5（停 JM）
+#   scripts/acceptance_test.sh --all             # 执行全部 5 个门
 #
-# Environment (override as needed):
-#   BOOTSTRAP              Kafka bootstrap, default node-1:9092
-#   SRC_TOPIC              external source topic, default orcp.src.demo
-#   FLINK_REST             default http://node-1:8081
-#   ADMIN_URL              orcp-admin base URL, default http://node-3:8081
-#   ADMIN_USER / ADMIN_PW  Basic auth for orcp-admin
-#   MYSQL_HOST / MYSQL_*   local detail DB (default node-1, orcp_ro)
+# 环境变量（可覆盖默认值）：
+#   BOOTSTRAP              Kafka bootstrap，默认 node-1:9092
+#   SRC_TOPIC              外部源 topic，默认 orcp.src.demo
+#   FLINK_REST             默认 http://node-1:8081
+#   ADMIN_URL              orcp-admin 基础 URL，默认 http://node-3:8081
+#   ADMIN_USER / ADMIN_PW  orcp-admin Basic 认证
+#   MYSQL_HOST / MYSQL_*   本地明细库（默认 node-1，orcp_ro）
 #   OB_HOST / OB_PORT / OB_*  OceanBase
-#   ALERTMANAGER_URL       default http://node-2:9093
+#   ALERTMANAGER_URL       默认 http://node-2:9093
 #
-# Exit codes:
-#   0  all selected checks PASSED (or SKIPPED with --allow-skip)
-#   1  one or more checks FAILED
-#   2  usage error
+# 退出码：
+#   0  所选检查全部 PASS（或 SKIP）
+#   1  存在一项或多项 FAIL
+#   2  用法错误
 
 set -uo pipefail
 
 # ---------------------------------------------------------------------------
-# Config
+# 配置默认值
 # ---------------------------------------------------------------------------
 : "${BOOTSTRAP:=node-1:9092}"
 : "${SRC_TOPIC:=orcp.src.demo}"
@@ -63,7 +54,7 @@ set -uo pipefail
 : "${OB_PORT:=2881}"
 : "${OB_USER:=orcp_rw@tenant#cluster}"
 : "${OB_PW:=ChangeMe_ob_1!}"
-: "${OB_CLIENT:=obclient}"             # obclient on node-1 or set to 'mysql' for direct MySQL protocol
+: "${OB_CLIENT:=obclient}"             # 也可以设为 'mysql'（直接使用 MySQL 协议）
 : "${ALERTMANAGER_URL:=http://node-2:9093}"
 
 EVENTS=${EVENTS:-1000}
@@ -84,12 +75,12 @@ for arg in "$@"; do
         --only-happy)     RUN_NO_DUP=0; RUN_OBS=0 ;;
         --help|-h)
             sed -n '2,40p' "$0"; exit 0 ;;
-        *)  echo "unknown flag: ${arg}" >&2; exit 2 ;;
+        *)  echo "未知参数：${arg}" >&2; exit 2 ;;
     esac
 done
 
 # ---------------------------------------------------------------------------
-# Utilities
+# 工具函数
 # ---------------------------------------------------------------------------
 C_GREEN=$'\033[0;32m'
 C_RED=$'\033[0;31m'
@@ -117,33 +108,31 @@ mysql_q() {
 }
 
 ob_q() {
-    # obclient accepts the same flags as mysql client; we rely on the
-    # tenant user format user@tenant#cluster for direct 2881 access.
+    # obclient 与 mysql 客户端接受相同的参数；租户用户格式 user@tenant#cluster 用于直连 2881。
     "${OB_CLIENT}" -h"${OB_HOST}" -P"${OB_PORT}" \
           -u"${OB_USER}" -p"${OB_PW}" \
           -N --silent -e "$1" orcp_dw 2>/dev/null
 }
 
 # ---------------------------------------------------------------------------
-# Gate 4 (run first so a broken stack aborts cheaply)
+# 门 4（优先执行，以便栈异常时尽早退出）
 # ---------------------------------------------------------------------------
 gate_observability() {
-    echo "== Gate 4: observability (/api/health + Flink /jobs/overview)"
+    echo "== 门 4：可观测性（/api/health + Flink /jobs/overview）"
 
     local body code
     code=$(curl -sS -o /tmp/acc_health.json -w '%{http_code}' \
            "${ADMIN_URL}/api/health" || echo 000)
     if [[ "${code}" != "200" ]]; then
-        record FAIL "GET /api/health returned ${code} (want 200)" \
-                    "body: $(head -c 300 /tmp/acc_health.json 2>/dev/null)"
+        record FAIL "GET /api/health 返回 ${code}（期望 200）" \
+                    "响应：$(head -c 300 /tmp/acc_health.json 2>/dev/null)"
         return
     fi
-    # Accept either top-level status=UP or all components UP.
     if grep -q '"status":"UP"' /tmp/acc_health.json; then
-        record PASS "aggregate health is UP"
+        record PASS "聚合健康状态为 UP"
     else
-        record FAIL "aggregate health is not UP" \
-                    "body: $(head -c 300 /tmp/acc_health.json)"
+        record FAIL "聚合健康状态不是 UP" \
+                    "响应：$(head -c 300 /tmp/acc_health.json)"
     fi
 
     local jobs_running
@@ -152,40 +141,40 @@ gate_observability() {
 print(sum(1 for j in d.get("jobs", []) if j.get("state") == "RUNNING"))' 2>/dev/null \
                    || echo -1)
     if [[ "${jobs_running}" -ge 1 ]]; then
-        record PASS "at least one Flink job is RUNNING (${jobs_running})"
+        record PASS "至少一个 Flink 作业处于 RUNNING 状态（${jobs_running} 个）"
     else
-        record FAIL "no RUNNING Flink job found (${jobs_running})"
+        record FAIL "未发现 RUNNING 状态的 Flink 作业（${jobs_running}）"
     fi
 }
 
 # ---------------------------------------------------------------------------
-# Gate 1: happy path.  Send EVENTS events, wait for detail + aggregate.
+# 门 1：正常路径。发送 EVENTS 条事件，等待明细和聚合数据出现。
 # ---------------------------------------------------------------------------
 gate_happy_path() {
-    echo "== Gate 1: happy path (${EVENTS} events -> MySQL -> OceanBase)"
+    echo "== 门 1：正常路径（${EVENTS} 条事件 -> MySQL -> OceanBase）"
 
     local before_orders before_agg
     before_orders=$(mysql_q "SELECT COUNT(*) FROM t_order" || echo "err")
     before_agg=$(ob_q "SELECT COUNT(*) FROM agg_order_1min" || echo "err")
     if ! [[ "${before_orders}" =~ ^[0-9]+$ ]] || ! [[ "${before_agg}" =~ ^[0-9]+$ ]]; then
-        record FAIL "baseline query failed" \
+        record FAIL "基准查询失败" \
                     "t_order=${before_orders}, agg_order_1min=${before_agg}"
         return
     fi
 
-    # Produce.  gen_events.py handles flush and graceful shutdown.
+    # 生产消息（gen_events.py 会自动 flush 并优雅退出）。
     python3 scripts/gen_events.py \
         --bootstrap-server "${BOOTSTRAP}" \
         --topic "${SRC_TOPIC}" \
         --count "${EVENTS}" --rate "${RATE}" --seed "${ACC_SEED:-7}" \
         >/tmp/acc_gen.log 2>&1
     if [[ $? -ne 0 ]]; then
-        record FAIL "gen_events.py produce failed" \
-                    "tail: $(tail -3 /tmp/acc_gen.log)"
+        record FAIL "gen_events.py 生产失败" \
+                    "尾部日志：$(tail -3 /tmp/acc_gen.log)"
         return
     fi
 
-    # Poll detail table.  Accept within HAPPY_PATH_TIMEOUT.
+    # 轮询明细表，在 HAPPY_PATH_TIMEOUT 内等待数据。
     local deadline=$((SECONDS + HAPPY_PATH_TIMEOUT))
     local rows_ok=0 agg_ok=0
     while (( SECONDS < deadline )); do
@@ -194,98 +183,91 @@ gate_happy_path() {
         now_agg=$(ob_q "SELECT COUNT(*) FROM agg_order_1min")
         if [[ "${rows_ok}" == 0 && "${now_orders}" =~ ^[0-9]+$ \
               && $((now_orders - before_orders)) -ge "${EVENTS}" ]]; then
-            record PASS "t_order grew by >= ${EVENTS} (from ${before_orders} to ${now_orders})"
+            record PASS "t_order 已增长 >= ${EVENTS}（从 ${before_orders} 到 ${now_orders}）"
             rows_ok=1
         fi
         if [[ "${agg_ok}" == 0 && "${now_agg}" =~ ^[0-9]+$ \
               && "${now_agg}" -gt "${before_agg}" ]]; then
-            record PASS "agg_order_1min grew (from ${before_agg} to ${now_agg})"
+            record PASS "agg_order_1min 已增长（从 ${before_agg} 到 ${now_agg}）"
             agg_ok=1
         fi
         if (( rows_ok && agg_ok )); then return; fi
         sleep 3
     done
 
-    (( rows_ok )) || record FAIL "t_order did not grow by ${EVENTS} within ${HAPPY_PATH_TIMEOUT}s" \
+    (( rows_ok )) || record FAIL "t_order 在 ${HAPPY_PATH_TIMEOUT}s 内未增长 ${EVENTS} 条" \
                                "before=${before_orders}, last=${now_orders:-N/A}"
-    (( agg_ok ))  || record FAIL "agg_order_1min did not grow within ${HAPPY_PATH_TIMEOUT}s" \
+    (( agg_ok ))  || record FAIL "agg_order_1min 在 ${HAPPY_PATH_TIMEOUT}s 内未增长" \
                                "before=${before_agg}, last=${now_agg:-N/A}"
 }
 
 # ---------------------------------------------------------------------------
-# Gate 3: no duplicates after orcp-ingest restart.
+# 门 3：重启 orcp-ingest 后无重放效果。
 # ---------------------------------------------------------------------------
 gate_no_duplicates() {
-    echo "== Gate 3: dedup survives an orcp-ingest restart"
+    echo "== 门 3：orcp-ingest 重启后无重放效果"
 
     local before
     before=$(mysql_q "SELECT COUNT(*) FROM t_order")
     if ! [[ "${before}" =~ ^[0-9]+$ ]]; then
-        record SKIP "cannot query t_order" "is MySQL reachable?"
+        record SKIP "无法查询 t_order" "MySQL 是否可达？"
         return
     fi
 
-    # Bounce orcp-ingest.  ADMIN_URL is the service; restart via systemd on
-    # its host.  If the caller is not on the ingest host, require INGEST_HOST.
+    # 重启 orcp-ingest。若调用方不在 ingest 主机上，需要设置 INGEST_HOST。
     if [[ -n "${INGEST_HOST:-}" ]]; then
         ssh "${SSH_USER:-orcp}@${INGEST_HOST}" 'sudo systemctl restart orcp-ingest' \
             >/tmp/acc_restart.log 2>&1
         if [[ $? -ne 0 ]]; then
-            record FAIL "orcp-ingest restart failed on ${INGEST_HOST}" \
-                        "tail: $(tail -3 /tmp/acc_restart.log)"
+            record FAIL "在 ${INGEST_HOST} 上重启 orcp-ingest 失败" \
+                        "尾部日志：$(tail -3 /tmp/acc_restart.log)"
             return
         fi
         sleep 15
     else
-        record SKIP "orcp-ingest restart needs INGEST_HOST" \
-                    "set INGEST_HOST=<host> to run this gate"
+        record SKIP "重启 orcp-ingest 需要设置 INGEST_HOST" \
+                    "请设置 INGEST_HOST=<主机名> 后重新执行此门"
         return
     fi
 
-    # Produce the SAME seeded batch again.  All eventIds collide with the
-    # previous run, so t_dedup accepts zero new rows and t_order must not grow.
+    # 以相同种子重新发送批次。所有 eventId 与前一轮重复，
+    # 因此 t_dedup 应拒绝全部条目，t_order 不应增长。
     python3 scripts/gen_events.py \
         --bootstrap-server "${BOOTSTRAP}" \
         --topic "${SRC_TOPIC}" \
         --count 50 --rate 50 --seed "${ACC_SEED:-7}" \
         >/tmp/acc_gen2.log 2>&1
-    sleep 15   # generous window for ingest to drain
+    sleep 15   # 为摄入服务留出充裕的处理窗口
 
     local after
     after=$(mysql_q "SELECT COUNT(*) FROM t_order")
     if [[ "${after}" == "${before}" ]]; then
-        record PASS "t_order unchanged after re-delivery (${before})"
+        record PASS "重新投递后 t_order 未增长（${before}）"
     else
-        record FAIL "t_order grew after replay" "before=${before}, after=${after}"
+        record FAIL "重放后 t_order 增长" "before=${before}, after=${after}"
     fi
 }
 
 # ---------------------------------------------------------------------------
-# Gate 2: kill a TaskManager, verify self-heal.
+# 门 2：杀死 TaskManager，验证自愈。
 # ---------------------------------------------------------------------------
 gate_self_heal() {
-    echo "== Gate 2: TaskManager kill & self-heal"
+    echo "== 门 2：TaskManager 杀死与自愈"
 
     if [[ -z "${TM_HOST:-}" ]]; then
-        record SKIP "set TM_HOST=<taskmanager host> to run this gate"
+        record SKIP "请设置 TM_HOST=<taskmanager 主机名> 后执行此门"
         return
     fi
-
-    # Capture checkpoint count BEFORE
-    local before_cp
-    before_cp=$(curl -sS "${FLINK_REST}/jobs/overview" \
-        | python3 -c 'import sys,json; j=json.load(sys.stdin).get("jobs",[]);
-print(j[0].get("last-modification", 0) if j else 0)' 2>/dev/null || echo 0)
 
     ssh "${SSH_USER:-orcp}@${TM_HOST}" 'sudo systemctl restart flink-taskmanager' \
         >/tmp/acc_tm.log 2>&1
     if [[ $? -ne 0 ]]; then
-        record FAIL "flink-taskmanager restart failed on ${TM_HOST}" \
-                    "tail: $(tail -3 /tmp/acc_tm.log)"
+        record FAIL "在 ${TM_HOST} 上重启 flink-taskmanager 失败" \
+                    "尾部日志：$(tail -3 /tmp/acc_tm.log)"
         return
     fi
 
-    # Poll: within 120s the job should be RUNNING again.
+    # 轮询：120 秒内作业应重新回到 RUNNING 状态。
     local deadline=$((SECONDS + 120))
     while (( SECONDS < deadline )); do
         local state
@@ -293,32 +275,32 @@ print(j[0].get("last-modification", 0) if j else 0)' 2>/dev/null || echo 0)
             | python3 -c 'import sys,json; j=json.load(sys.stdin).get("jobs",[]);
 print(j[0].get("state","") if j else "")' 2>/dev/null)
         if [[ "${state}" == "RUNNING" ]]; then
-            record PASS "job back to RUNNING within $((SECONDS - (deadline - 120)))s"
+            record PASS "作业在 $((SECONDS - (deadline - 120)))s 内恢复为 RUNNING"
             return
         fi
         sleep 5
     done
-    record FAIL "job did not return to RUNNING within 120s of TM restart"
+    record FAIL "TM 重启后 120 秒内作业未恢复为 RUNNING"
 }
 
 # ---------------------------------------------------------------------------
-# Gate 5: alert fires when JobManager stops.
+# 门 5：JobManager 停止时告警触发。
 # ---------------------------------------------------------------------------
 gate_alerts() {
-    echo "== Gate 5: alert fires on JobManager outage"
+    echo "== 门 5：JobManager 故障时告警触发"
 
     if [[ -z "${JM_HOST:-}" ]]; then
-        record SKIP "set JM_HOST=<jobmanager host> to run this gate"
+        record SKIP "请设置 JM_HOST=<jobmanager 主机名> 后执行此门"
         return
     fi
 
     ssh "${SSH_USER:-orcp}@${JM_HOST}" 'sudo systemctl stop flink-jobmanager' \
         >/tmp/acc_jm.log 2>&1 || {
-            record FAIL "could not stop flink-jobmanager on ${JM_HOST}"
+            record FAIL "无法停止 ${JM_HOST} 上的 flink-jobmanager"
             return
         }
 
-    # Poll Alertmanager for a firing alert matching our rule.
+    # 轮询 Alertmanager，查找匹配的活跃告警。
     local deadline=$((SECONDS + 180))
     local fired=0
     while (( SECONDS < deadline )); do
@@ -329,26 +311,26 @@ gate_alerts() {
         sleep 10
     done
 
-    # Cleanup: bring JM back up regardless of outcome.
+    # 无论结果如何，恢复 JM。
     ssh "${SSH_USER:-orcp}@${JM_HOST}" 'sudo systemctl start flink-jobmanager' \
         >>/tmp/acc_jm.log 2>&1 || true
 
     if (( fired )); then
-        record PASS "alert fired in Alertmanager within 180s"
+        record PASS "告警在 180 秒内出现在 Alertmanager"
     else
-        record FAIL "no alert visible within 180s" \
-                    "check rules at deploy/prometheus/orcp-alerts.yml"
+        record FAIL "180 秒内未出现告警" \
+                    "请检查规则文件：deploy/prometheus/orcp-alerts.yml"
     fi
 }
 
 # ---------------------------------------------------------------------------
-# Main
+# 主流程
 # ---------------------------------------------------------------------------
-printf '\n=== ORCP acceptance test (§8.8) ===\n'
+printf '\n=== ORCP 验收测试（§8.8）===\n'
 printf '  BOOTSTRAP=%s  ADMIN_URL=%s  FLINK_REST=%s\n' \
        "${BOOTSTRAP}" "${ADMIN_URL}" "${FLINK_REST}"
 printf '  MYSQL_HOST=%s  OB_HOST=%s:%s\n' "${MYSQL_HOST}" "${OB_HOST}" "${OB_PORT}"
-printf '  events=%s rate=%s timeout=%ss\n\n' "${EVENTS}" "${RATE}" "${HAPPY_PATH_TIMEOUT}"
+printf '  事件数=%s  速率=%s  超时=%ss\n\n' "${EVENTS}" "${RATE}" "${HAPPY_PATH_TIMEOUT}"
 
 (( RUN_OBS ))       && gate_observability
 (( RUN_HAPPY ))     && gate_happy_path
@@ -356,11 +338,11 @@ printf '  events=%s rate=%s timeout=%ss\n\n' "${EVENTS}" "${RATE}" "${HAPPY_PATH
 (( RUN_SELF_HEAL )) && gate_self_heal
 (( RUN_ALERTS ))    && gate_alerts
 
-printf '\n=== summary ===\n'
+printf '\n=== 汇总 ===\n'
 if (( FAILED == 0 )); then
-    printf '%sALL SELECTED GATES PASSED%s\n' "${C_GREEN}" "${C_RESET}"
+    printf '%s所有选定门均通过%s\n' "${C_GREEN}" "${C_RESET}"
     exit 0
 else
-    printf '%s%d GATE(S) FAILED%s\n' "${C_RED}" "${FAILED}" "${C_RESET}"
+    printf '%s%d 个门失败%s\n' "${C_RED}" "${FAILED}" "${C_RESET}"
     exit 1
 fi

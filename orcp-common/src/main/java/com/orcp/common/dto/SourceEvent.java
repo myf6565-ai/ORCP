@@ -12,12 +12,11 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Canonical upstream event contract produced to {@code orcp.src.*} and
- * forwarded (after dedup/persist) to {@code orcp.mid.events}.
+ * 上游事件的统一消息契约，写入 {@code orcp.src.*} 并在
+ * 去重/持久化后转发到 {@code orcp.mid.events}。
  *
- * <p>The schema is intentionally flat to keep Flink SQL parsing simple;
- * richer payloads should flow through dedicated topics instead of
- * nesting complex structures here.
+ * <p>Schema 刻意保持扁平结构，以简化 Flink SQL 解析；
+ * 更复杂的 payload 应通过专用 topic 传输，而非嵌套在此对象中。
  */
 @Data
 @Builder
@@ -28,25 +27,25 @@ public class SourceEvent implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    /** Globally unique event id, used for dedup. */
+    /** 全局唯一事件 ID，用于去重。 */
     private String eventId;
 
-    /** Business type, see {@code OrcpConstants.BIZ_TYPE_*}. */
+    /** 业务类型，参见 {@code OrcpConstants.BIZ_TYPE_*}。 */
     private String bizType;
 
-    /** Business key (e.g. order id) for partition routing. */
+    /** 业务键（如订单 ID），用于分区路由。 */
     private String bizKey;
 
-    /** Denormalised customer id used by downstream aggregations. */
+    /** 客户 ID，供下游聚合使用（非规范化字段）。 */
     private Long customerId;
 
-    /** Monetary amount if applicable. */
+    /** 金额（如适用）。 */
     private BigDecimal amount;
 
-    /** Event time in Asia/Shanghai; NOT ingest time. */
+    /** 事件发生时间（Asia/Shanghai），非摄入时间。 */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime eventTime;
 
-    /** Distributed trace id (opaque string). */
+    /** 分布式追踪 ID（不透明字符串）。 */
     private String traceId;
 }

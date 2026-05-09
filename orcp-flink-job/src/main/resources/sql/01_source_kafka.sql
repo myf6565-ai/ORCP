@@ -1,21 +1,20 @@
 -- =============================================================================
--- Kafka source: consumes the internal topic produced by orcp-ingest.
+-- Kafka source：消费 orcp-ingest 写入的内部 topic。
 --
--- Column contract MUST stay in lockstep with
+-- 字段契约必须与以下文件保持同步：
 --   orcp-ingest/src/main/java/com/orcp/ingest/service/ForwardService.java
--- which emits:
+-- ForwardService 生成的 wire 格式为：
 --   {
 --     "event_id":    "evt-0000000001",
 --     "biz_type":    "ORDER",
 --     "biz_key":     "order-0000000001",
 --     "customer_id": 42,
---     "amount":      "128.3200",          // JSON string -> DECIMAL(18,4)
+--     "amount":      "128.3200",          // JSON 字符串 -> DECIMAL(18,4)
 --     "event_time":  "2026-05-09T10:00:00.000Z"   // ISO-8601 UTC
 --   }
 --
--- Watermark: 5s out-of-order tolerance is enough for a realistic in-cluster
--- path (ingest -> kafka -> flink).  Increase if cross-region or if the ingest
--- path ever buffers for longer.
+-- Watermark：5 秒乱序容忍度，足以覆盖集群内合理的网络延迟。
+-- 如有跨机房或摄入层有缓冲的场景，可适当增大。
 -- =============================================================================
 
 CREATE TABLE src_events (

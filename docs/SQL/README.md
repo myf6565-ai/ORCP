@@ -1,57 +1,51 @@
-# SQL schemas
+# SQL 建表脚本
 
-Reference DDL for the two databases the pipeline touches. Both files are
-idempotent; re-running them against a populated instance is safe.
+本目录包含流水线所涉及两个数据库的参考 DDL。两个文件均具备**幂等性**——对已有数据的实例重复执行是安全的。
 
-| File                          | Target                          | Run from                  | Notes                                                   |
-|-------------------------------|---------------------------------|---------------------------|---------------------------------------------------------|
-| `mysql_detail_schema.sql`     | MySQL 8.0 on node-1             | node-1 shell              | Creates `orcp_detail` DB + `orcp_rw` / `orcp_ro` users; seeds 50 customers. |
-| `oceanbase_dw_schema.sql`     | OceanBase 3.2.3 (MySQL mode)    | any host with `obclient`  | Creates `orcp_dw` DB + two aggregate tables. Does NOT create users. |
+| 文件 | 目标库 | 执行位置 | 说明 |
+|------|--------|----------|------|
+| `mysql_detail_schema.sql` | node-1 上的 MySQL 8.0 | node-1 shell | 创建 `orcp_detail` 库及 `orcp_rw` / `orcp_ro` 账号；预置 50 条客户种子数据。 |
+| `oceanbase_dw_schema.sql` | OceanBase 3.2.3（MySQL 模式） | 任意装有 `obclient` 的主机 | 创建 `orcp_dw` 库及两张聚合表，**不**创建用户。 |
 
-## MySQL (node-1)
+## MySQL（node-1）
 
 ```bash
-# Run as the MySQL root user, typically the first time after
-# deploy/centos/40_install_mysql.sh has set up the server.
+# 以 MySQL root 账号执行，通常在 deploy/centos/40_install_mysql.sh 完成后首次运行。
 mysql -uroot -p < docs/SQL/mysql_detail_schema.sql
 
-# Smoke check
-mysql -uorcp_ro -p'ChangeMe_ro_1!' -e "SELECT COUNT(*) FROM orcp_detail.t_customer"   # expect 50
+# 快速验证
+mysql -uorcp_ro -p'ChangeMe_ro_1!' -e "SELECT COUNT(*) FROM orcp_detail.t_customer"   # 期望 50
 ```
 
-**Rotate the default passwords** (`ChangeMe_rw_1!` / `ChangeMe_ro_1!`) before
-exposing the instance to anything outside localhost. The real values should
-live in Nacos.
+**在将实例暴露到 localhost 之外前，请立即修改默认密码**（`ChangeMe_rw_1!` / `ChangeMe_ro_1!`），真实密码应存放在 Nacos 中。
 
-## OceanBase (independent cluster)
+## OceanBase（独立集群）
 
-Tenant users must already exist and have `CREATE`/`SELECT`/`INSERT`/`UPDATE`
-privileges on the `orcp_dw` database. Check with your OB DBA if unsure.
+租户用户必须已存在，并对 `orcp_dw` 库拥有 `CREATE`/`SELECT`/`INSERT`/`UPDATE` 权限。如不确定，请咨询 OB DBA。
 
 ```bash
-# Direct connection (port 2881)
+# 直连（端口 2881）
 obclient -h${OB_HOST} -P2881 -u"orcp_rw@tenant#cluster" -p${OB_PWD} < docs/SQL/oceanbase_dw_schema.sql
 
-# OBProxy connection (port 2883) -- note the user format: user@tenant (no #cluster)
+# 经 OBProxy 连接（端口 2883）——用户名格式为 user@tenant，不带 #cluster
 obclient -h${OBPROXY_HOST} -P2883 -u"orcp_rw@tenant" -p${OB_PWD} < docs/SQL/oceanbase_dw_schema.sql
 
-# Smoke check
+# 快速验证
 obclient -h${OB_HOST} -P2881 -u"orcp_rw@tenant#cluster" -p${OB_PWD} orcp_dw -e "SHOW TABLES"
 ```
 
-## Relationship to the rest of the pipeline
+## 与流水线其余部分的关系
 
 ```
 orcp-ingest  ---INSERT--->  orcp_detail.t_order / t_order_item / t_dedup
                                               ^
                                               |
-                                              |  (JDBC lookup)
+                                              |  （JDBC lookup 维表关联）
                                               |
-orcp.mid.events  ---Flink SQL---> agg_order_1min  (UPSERT via JDBC sink)
+orcp.mid.events  ---Flink SQL---> agg_order_1min  （JDBC sink UPSERT）
                                               ^
-                                              |  lives in OceanBase orcp_dw
+                                              |  位于 OceanBase orcp_dw
 ```
 
-- Stage D (`orcp-ingest`) writes detail rows and the dedup ledger into MySQL.
-- Stage E (`orcp-flink-job`) reads `orcp.mid.events` from Kafka, joins
-  `t_customer` via the JDBC lookup, and upserts into `agg_order_1min`.
+- 阶段 D（`orcp-ingest`）将明细行和去重记录写入 MySQL。
+- 阶段 E（`orcp-flink-job`）从 Kafka 读取 `orcp.mid.events`，通过 JDBC lookup 关联 `t_customer`，将结果 upsert 到 `agg_order_1min`。

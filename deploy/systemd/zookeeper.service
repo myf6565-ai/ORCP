@@ -1,5 +1,5 @@
 [Unit]
-Description=Apache ZooKeeper (ORCP)
+Description=Apache ZooKeeper（ORCP）
 Documentation=https://zookeeper.apache.org/
 Requires=network-online.target
 After=network-online.target
@@ -11,7 +11,7 @@ Group=orcp
 Environment=JAVA_HOME=/opt/jdk-8
 Environment=ZOO_LOG_DIR=/var/log/orcp/zookeeper
 Environment=ZOO_LOG4J_PROP=INFO,ROLLINGFILE
-# zkServer.sh in foreground mode: exec the JVM directly so systemd tracks it.
+# zkServer.sh 前台模式：直接执行 JVM，systemd 可跟踪主进程。
 ExecStart=/opt/zookeeper/bin/zkServer.sh start-foreground /opt/zookeeper/conf/zoo.cfg
 ExecStop=/opt/zookeeper/bin/zkServer.sh stop /opt/zookeeper/conf/zoo.cfg
 Restart=on-failure

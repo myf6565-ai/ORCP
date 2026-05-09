@@ -1,5 +1,5 @@
 [Unit]
-Description=Apache Flink JobManager (ORCP)
+Description=Apache Flink JobManager（ORCP）
 Documentation=https://flink.apache.org/
 Requires=network-online.target
 After=network-online.target
@@ -11,8 +11,7 @@ Group=orcp
 Environment=JAVA_HOME=/opt/jdk-8
 Environment=FLINK_LOG_DIR=/var/log/orcp/flink
 Environment=FLINK_PID_DIR=/var/run/flink
-# jobmanager.sh start-foreground: runs JM in the foreground so systemd can
-# supervise it (ExecStart must not fork).
+# jobmanager.sh start-foreground：以前台方式启动 JM，使 systemd 可直接监控主进程。
 ExecStartPre=/bin/mkdir -p /var/run/flink
 ExecStartPre=/bin/chown orcp:orcp /var/run/flink
 ExecStart=/opt/flink/bin/jobmanager.sh start-foreground

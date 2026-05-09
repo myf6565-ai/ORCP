@@ -18,22 +18,20 @@ import org.springframework.stereotype.Component;
 import javax.annotation.PostConstruct;
 
 /**
- * Consumes the external source topic, persists to MySQL, forwards to the
- * mid topic, then acknowledges the Kafka offset.
+ * 消费外部源 topic，持久化到 MySQL，转发到 mid topic，最后提交 Kafka offset。
  *
- * <p>Processing order matters for correctness (DEV_SPEC §6.2):
+ * <p>处理顺序（保证正确性）：
  * <ol>
- *   <li>Parse + reject malformed JSON (never block the whole topic on one bad message).</li>
- *   <li>Caffeine lookup -- if cached hit, short-circuit and ack without touching the DB.</li>
- *   <li>DB transaction: claim eventId in {@code t_dedup} + insert {@code t_order}.</li>
- *   <li>Sync forward to the mid topic.  If this throws, we do NOT ack; Kafka will redeliver.</li>
- *   <li>{@code markSeen} and {@code ack}.</li>
+ *   <li>解析并拒绝畸形 JSON（绝不因单条坏消息阻塞整个 topic）。</li>
+ *   <li>Caffeine 查询——命中则短路，不访问 DB 直接 ack。</li>
+ *   <li>DB 事务：在 {@code t_dedup} 声明 eventId 所有权 + 写入 {@code t_order}。</li>
+ *   <li>同步转发到 mid topic。如果失败则 <strong>不 ack</strong>；Kafka 会重投消息。</li>
+ *   <li>{@code markSeen} 更新 Caffeine 缓存，然后 {@code ack}。</li>
  * </ol>
  *
- * <p>{@link #handle} only ever throws {@link IngestException} for transient
- * infrastructure problems that warrant redelivery.  Permanent errors (JSON
- * parse failure) are logged, acked, and dropped -- a single poison record
- * must not halt the pipeline.
+ * <p>{@link #handle} 只会抛出 {@link IngestException} 表示需要重投的瞬时错误。
+ * 永久性错误（JSON 解析失败）只记录日志后 ack 并丢弃——
+ * 单条毒药消息不得阻塞流水线。
  */
 @Slf4j
 @Component
@@ -71,7 +69,7 @@ public class SourceEventListener {
 
     @PostConstruct
     void logStartup() {
-        log.info("SourceEventListener ready");
+        log.info("SourceEventListener 已就绪");
     }
 
     @KafkaListener(
@@ -87,10 +85,9 @@ public class SourceEventListener {
         try {
             event = objectMapper.readValue(record.value(), SourceEvent.class);
         } catch (Exception e) {
-            // Poison record: log, ack, drop.  We deliberately do NOT rethrow
-            // -- if we did, Kafka would redeliver forever.
+            // 毒药消息：记录日志、ack、丢弃。不重新抛出——否则 Kafka 会永久重投。
             parseErrorCounter.increment();
-            log.warn("dropping malformed record at {}-{}@{}: {}",
+            log.warn("丢弃畸形消息 {}-{}@{}：{}",
                     record.topic(), record.partition(), record.offset(),
                     abbreviate(record.value()));
             ack.acknowledge();
@@ -99,16 +96,16 @@ public class SourceEventListener {
 
         if (event.getEventId() == null || event.getEventId().isEmpty()) {
             parseErrorCounter.increment();
-            log.warn("dropping record without eventId at {}-{}@{}",
+            log.warn("丢弃缺少 eventId 的消息 {}-{}@{}",
                     record.topic(), record.partition(), record.offset());
             ack.acknowledge();
             return;
         }
 
-        // Fast-path dedup: if Caffeine has seen it recently, skip everything.
+        // 快速路径去重：Caffeine 近期已见过则跳过所有处理。
         if (dedupService.isCachedHit(event.getEventId())) {
             duplicateCounter.increment();
-            log.debug("caffeine dedup hit: {}", event.getEventId());
+            log.debug("Caffeine 去重命中：{}", event.getEventId());
             ack.acknowledge();
             recordTime(t0);
             return;
@@ -118,7 +115,7 @@ public class SourceEventListener {
             boolean claimed = detailWriteService.tryClaimAndPersist(event);
             if (!claimed) {
                 duplicateCounter.increment();
-                dedupService.markSeen(event.getEventId()); // cache the negative result too
+                dedupService.markSeen(event.getEventId()); // 缓存负向结果，减少后续 DB 访问
                 ack.acknowledge();
                 recordTime(t0);
                 return;
@@ -130,13 +127,12 @@ public class SourceEventListener {
             persistedCounter.increment();
             ack.acknowledge();
         } catch (IngestException e) {
-            // Transient: don't ack, let the container redeliver after a
-            // back-off.  Dedup makes the replay idempotent.
-            log.error("retriable failure for eventId={}: {}", event.getEventId(), e.getMessage(), e);
+            // 瞬时故障：不 ack，让容器在退避后重投。去重使重投幂等。
+            log.error("eventId={} 处理失败（可重试）：{}", event.getEventId(), e.getMessage(), e);
             throw e;
         } catch (Exception e) {
-            log.error("unexpected failure for eventId={}: {}", event.getEventId(), e.getMessage(), e);
-            throw new IngestException("unexpected failure", e);
+            log.error("eventId={} 发生非预期异常：{}", event.getEventId(), e.getMessage(), e);
+            throw new IngestException("非预期异常", e);
         } finally {
             recordTime(t0);
         }
@@ -148,6 +144,6 @@ public class SourceEventListener {
 
     private static String abbreviate(String s) {
         if (s == null) return "<null>";
-        return s.length() <= 256 ? s : s.substring(0, 256) + "...(" + s.length() + " chars)";
+        return s.length() <= 256 ? s : s.substring(0, 256) + "...（共 " + s.length() + " 字符）";
     }
 }

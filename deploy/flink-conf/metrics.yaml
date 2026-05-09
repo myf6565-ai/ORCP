@@ -1,26 +1,24 @@
 #=============================================================================
-# ORCP Flink metrics reference (documentation only).
+# ORCP Flink 指标参考文档（仅供说明，Flink 不直接读取此文件）。
 #
-# The Prometheus reporter is actually enabled by the metrics.reporter.prom.*
-# keys in flink-conf.yaml -- Flink does not read this file directly. It is
-# kept in deploy/flink-conf/ so operators have a single place to see which
-# metrics/labels the Grafana dashboards depend on.
+# Prometheus reporter 的实际配置位于 flink-conf.yaml 中的 metrics.reporter.prom.*。
+# 本文件记录 Grafana 看板所依赖的指标族，方便运维人员查阅。
 #
-# Scrape targets (see deploy/centos/60_install_prom_grafana.sh):
-#   flink job  -> node-1..N : 9250-9260  (HTTP, plain text /metrics)
+# 抓取目标（见 deploy/centos/60_install_prom_grafana.sh）：
+#   flink 作业 -> node-1..N : 9250-9260（HTTP，纯文本 /metrics）
 #
-# Expected metric families (partial):
-#   flink_jobmanager_job_uptime                    gauge
-#   flink_jobmanager_job_numRestarts_total         counter
-#   flink_jobmanager_job_lastCheckpointDuration    gauge
-#   flink_jobmanager_job_lastCheckpointSize        gauge
-#   flink_taskmanager_job_task_numRecordsIn        counter
-#   flink_taskmanager_job_task_numRecordsOut       counter
-#   flink_taskmanager_Status_JVM_Memory_*          gauge
+# 关键指标族（部分）：
+#   flink_jobmanager_job_uptime                    gauge  作业运行时长
+#   flink_jobmanager_job_numRestarts_total         counter 作业重启次数
+#   flink_jobmanager_job_lastCheckpointDuration    gauge  最近检查点耗时
+#   flink_jobmanager_job_lastCheckpointSize        gauge  最近检查点大小
+#   flink_taskmanager_job_task_numRecordsIn        counter 输入记录数
+#   flink_taskmanager_job_task_numRecordsOut       counter 输出记录数
+#   flink_taskmanager_Status_JVM_Memory_*          gauge  JVM 内存用量
 #
-# Alert rules referenced in DEV_SPEC §8.6:
-#   - flink_jobmanager_job_uptime == 0 for 2m
-#   - increase(flink_jobmanager_job_numRestarts_total[5m]) > 3
+# DEV_SPEC §8.6 中引用的告警规则：
+#   - flink_jobmanager_job_uptime == 0 持续 2m（作业停止）
+#   - increase(flink_jobmanager_job_numRestarts_total[5m]) > 3（频繁重启）
 #=============================================================================
 reporters:
   - id: prom

@@ -9,11 +9,11 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 import java.time.LocalDateTime;
 
 /**
- * MyBatis-Plus hooks.
+ * MyBatis-Plus 钩子配置。
  *
- * <p>Auto-fills {@code updated_at} on update; {@code created_at} is always
- * set explicitly by the ingest pipeline (we use the source {@code eventTime}
- * when present), so we do NOT fill it here.
+ * <p>仅在 UPDATE 时自动填充 {@code updated_at}；
+ * {@code created_at} 由流水线显式设置（使用源事件的 {@code eventTime}），
+ * 因此 <strong>不在此处填充</strong>。
  */
 @Configuration
 @EnableTransactionManagement
@@ -24,7 +24,7 @@ public class MybatisConfig {
         return new MetaObjectHandler() {
             @Override
             public void insertFill(MetaObject metaObject) {
-                // no-op; createdAt is supplied by the application
+                // 无操作：createdAt 由业务代码显式提供
             }
 
             @Override

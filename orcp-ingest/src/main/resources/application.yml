@@ -1,10 +1,8 @@
-# Static fallback configuration.  Runtime values (Kafka / DB endpoints,
-# credentials) are overridden by the Nacos data-id "orcp-ingest.yaml" at
-# bootstrap -- see bootstrap.yml.
+# 静态回退配置。运行时值（Kafka / DB 端点、密码）
+# 在 bootstrap 阶段由 Nacos data-id "orcp-ingest.yaml" 覆盖。
 #
-# Environment variables take precedence over the defaults below so that the
-# systemd unit in Stage F can inject cluster-specific values without a
-# redeploy.
+# 以下默认值中以 ${VAR:default} 形式声明的项，
+# 可直接通过系统环境变量覆盖，无需重新部署。
 
 server:
   port: 8080
@@ -22,10 +20,10 @@ spring:
       max-poll-records: 500
       auto-offset-reset: earliest
       properties:
-        isolation.level: read_committed
+        isolation.level: read_committed    # 仅消费已提交的 Kafka 事务
     listener:
-      ack-mode: MANUAL_IMMEDIATE
-      concurrency: 3
+      ack-mode: MANUAL_IMMEDIATE           # 由 listener 显式提交 offset
+      concurrency: 3                       # 并发线程数（与 topic 分区数对齐）
     producer:
       acks: all
       retries: 10
@@ -53,7 +51,7 @@ mybatis-plus:
   global-config:
     banner: false
     db-config:
-      id-type: input
+      id-type: input     # 使用业务主键，禁用自增
 
 management:
   endpoints:
@@ -69,9 +67,9 @@ management:
 
 orcp:
   kafka:
-    src-topic: ${ORCP_SRC_TOPIC:orcp.src.demo}
-    mid-topic: ${ORCP_MID_TOPIC:orcp.mid.events}
-    send-timeout-seconds: 10
+    src-topic: ${ORCP_SRC_TOPIC:orcp.src.demo}    # 外部源 topic
+    mid-topic: ${ORCP_MID_TOPIC:orcp.mid.events}  # 内部转发 topic（Flink 消费）
+    send-timeout-seconds: 10                       # 同步转发超时
   dedup:
-    caffeine-max-size: 10000
-    caffeine-ttl-minutes: 10
+    caffeine-max-size: 10000       # Caffeine LRU 缓存最大条目数
+    caffeine-ttl-minutes: 10       # 写入后过期时间（分钟）

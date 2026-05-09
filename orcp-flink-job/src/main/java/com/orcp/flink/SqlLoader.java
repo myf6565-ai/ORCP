@@ -17,46 +17,40 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Reads SQL scripts from the classpath, substitutes {@code ${var}} placeholders
- * against a {@link ParameterTool}, splits them into statements and executes
- * them on a {@link TableEnvironment}.
+ * 从 classpath 读取 SQL 脚本，将 {@code ${var}} 占位符替换为 {@link ParameterTool} 中的值，
+ * 将语句拆分后在 {@link TableEnvironment} 上执行。
  *
- * <p>Behaviour contract:
+ * <p>行为契约：
  * <ul>
- *   <li>DDL statements (CREATE TABLE / CREATE VIEW / SET / USE) are executed
- *       immediately via {@link TableEnvironment#executeSql(String)}.</li>
- *   <li>INSERT statements are collected into a {@link StatementSet} and
- *       executed together at the end as a single Flink job.  That lets the
- *       pipeline file contain multiple INSERTs if needed without spawning
- *       independent jobs.</li>
- *   <li>Line comments start with {@code --}; block comments {@code / * ... * /}
- *       are also stripped.  Empty trailing semicolons are ignored.</li>
- *   <li>Unresolved placeholders raise {@link IllegalStateException} with the
- *       offending name -- silent substitution-failure would be very hard to
- *       debug in production.</li>
+ *   <li>DDL 语句（CREATE TABLE / CREATE VIEW / SET / USE）通过
+ *       {@link TableEnvironment#executeSql(String)} 立即执行。</li>
+ *   <li>INSERT 语句收集到 {@link StatementSet} 中，最终合并为一个 Flink 作业提交。
+ *       这样流水线文件可以包含多个 INSERT 而不会创建多个独立作业。</li>
+ *   <li>行注释以 {@code --} 开头；块注释 {@code / * ... * /} 也会被清除。
+ *       空的尾部分号会被忽略。</li>
+ *   <li>未解析的占位符会抛出 {@link IllegalStateException} 并包含缺失的键名——
+ *       静默替换失败在生产环境中极难调试。</li>
  * </ul>
  *
- * <p>Deliberately dependency-free at the JDK layer: no {@code Files.readString}
- * (JDK 11+) -- we stick with commons-io so the job jar still works on JDK 8.
+ * <p>刻意不使用 JDK 层面的高级 API：不使用 {@code Files.readString}（JDK 11+），
+ * 而使用 commons-io，以确保 job jar 在 JDK 8 上正常运行。
  */
 public final class SqlLoader {
 
     private static final Logger LOG = LoggerFactory.getLogger(SqlLoader.class);
 
-    /** {@code ${name}} or {@code ${name.with.dots}}; alphanumerics, dot, dash, underscore. */
+    /** 匹配 {@code ${name}} 或 {@code ${name.with.dots}}；字母数字、点、横线、下划线。 */
     private static final Pattern PLACEHOLDER = Pattern.compile("\\$\\{([A-Za-z0-9_.\\-]+)}");
 
     private SqlLoader() {
     }
 
     /**
-     * Loads and executes the listed classpath resources against {@code tEnv}.
-     * The files are processed in the order given; the first INSERT encountered
-     * anywhere forms part of a single {@link StatementSet} that is executed
-     * once after all files are parsed.
+     * 按顺序加载并执行 classpath 资源中的 SQL 语句。
+     * 所有文件中遇到的第一个 INSERT 语句均纳入同一 {@link StatementSet}，
+     * 全部文件解析完毕后统一提交。
      *
-     * @return the Flink {@link TableResult} for the combined INSERT set, or
-     *         {@code null} if there were no INSERTs to run (pure DDL).
+     * @return 合并 INSERT 集合的 {@link TableResult}，若无 INSERT 则返回 {@code null}。
      */
     public static TableResult loadAndExecute(TableEnvironment tEnv,
                                              ParameterTool params,
@@ -65,11 +59,11 @@ public final class SqlLoader {
         int insertCount = 0;
 
         for (String resource : classpathResources) {
-            LOG.info("Loading SQL resource {}", resource);
+            LOG.info("加载 SQL 资源：{}", resource);
             String raw = readResource(resource);
             String resolved = substitute(raw, params);
             List<String> statements = splitStatements(resolved);
-            LOG.info("  resource {} -> {} statement(s)", resource, statements.size());
+            LOG.info("  资源 {} -> {} 条语句", resource, statements.size());
 
             for (String stmt : statements) {
                 String trimmed = stmt.trim();
@@ -77,42 +71,41 @@ public final class SqlLoader {
                     continue;
                 }
                 if (isInsert(trimmed)) {
-                    LOG.info("  enqueuing INSERT ({} chars) into StatementSet", trimmed.length());
+                    LOG.info("  将 INSERT（{} 字符）加入 StatementSet", trimmed.length());
                     inserts.addInsertSql(trimmed);
                     insertCount++;
                 } else {
-                    LOG.info("  executing DDL: {}", shortHead(trimmed));
+                    LOG.info("  执行 DDL：{}", shortHead(trimmed));
                     tEnv.executeSql(trimmed);
                 }
             }
         }
 
         if (insertCount == 0) {
-            LOG.warn("No INSERT statements found across {} resource(s); nothing to run.",
+            LOG.warn("在 {} 个资源中未找到 INSERT 语句，无作业可提交。",
                     classpathResources.length);
             return null;
         }
 
-        LOG.info("Submitting StatementSet with {} INSERT(s)", insertCount);
+        LOG.info("提交 StatementSet，共 {} 条 INSERT", insertCount);
         return inserts.execute();
     }
 
-    // -- helpers ----------------------------------------------------------
+    // -- 辅助方法 ----------------------------------------------------------
 
     static String readResource(String path) {
         try (InputStream in = SqlLoader.class.getResourceAsStream(path)) {
-            Objects.requireNonNull(in, "classpath resource not found: " + path);
+            Objects.requireNonNull(in, "classpath 资源不存在：" + path);
             return IOUtils.toString(in, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to read " + path, e);
+            throw new IllegalStateException("读取 " + path + " 失败", e);
         }
     }
 
     /**
-     * Resolves every {@code ${name}} placeholder by looking it up in
-     * {@code params}.  Throws on a missing key rather than leaving the
-     * placeholder literal in the SQL, which would manifest downstream as
-     * a cryptic ValidationException.
+     * 将 SQL 中每个 {@code ${name}} 占位符替换为 {@code params} 中对应的值。
+     * 若键缺失则抛出异常（而非静默保留占位符）——占位符原样保留会导致下游
+     * 产生难以排查的 ValidationException。
      */
     static String substitute(String sql, ParameterTool params) {
         Matcher m = PLACEHOLDER.matcher(sql);
@@ -121,10 +114,10 @@ public final class SqlLoader {
             String key = m.group(1);
             if (!params.has(key)) {
                 throw new IllegalStateException(
-                        "Missing required SQL parameter '" + key + "'; "
-                                + "declare it in job.properties or pass --" + key + " <value>");
+                        "缺少必要的 SQL 参数 '" + key + "'；"
+                                + "请在 job.properties 中声明或通过 --" + key + " <value> 传入");
             }
-            // Matcher.quoteReplacement so values containing $ or \ survive intact.
+            // Matcher.quoteReplacement 确保值中包含 $ 或 \ 时不会被误解析。
             m.appendReplacement(out, Matcher.quoteReplacement(params.get(key)));
         }
         m.appendTail(out);
@@ -132,15 +125,13 @@ public final class SqlLoader {
     }
 
     /**
-     * Splits a block of SQL into individual statements.  Comments are
-     * stripped first so a {@code ;} inside a line-comment doesn't trigger
-     * a spurious break.  A final statement without a trailing semicolon
-     * is accepted.
+     * 将 SQL 块拆分为单条语句。先清除注释（防止注释中的 {@code ;} 触发误拆分），
+     * 再按 {@code ;} 分割。不带尾部分号的最后一条语句也会被接受。
      */
     static List<String> splitStatements(String sql) {
-        // Remove /* ... */ block comments (non-greedy, dot-matches-newline).
+        // 清除 /* ... */ 块注释（非贪婪，支持跨行）。
         String noBlock = sql.replaceAll("(?s)/\\*.*?\\*/", "");
-        // Remove -- line comments (rest of line).
+        // 清除 -- 行注释。
         StringBuilder clean = new StringBuilder(noBlock.length());
         for (String line : noBlock.split("\n", -1)) {
             int dash = line.indexOf("--");
@@ -157,11 +148,11 @@ public final class SqlLoader {
         return out;
     }
 
+    /**
+     * 判断语句是否为 INSERT（大小写不敏感），
+     * 需确保 INSERT 后有空白字符，避免将 INSERTING 等标识符误判。
+     */
     static boolean isInsert(String stmt) {
-        // match "INSERT" as the first keyword, case-insensitive.  We need a
-        // word boundary after it so identifiers like "INSERTING" or
-        // "INSERTED_AT" don't accidentally classify as INSERT statements.
-        // regionMatches alone would accept any prefix, which is wrong here.
         String head = stmt.replaceFirst("^\\s+", "");
         if (head.length() < 7) {
             return false;

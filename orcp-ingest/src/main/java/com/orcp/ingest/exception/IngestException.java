@@ -1,12 +1,11 @@
 package com.orcp.ingest.exception;
 
 /**
- * Unchecked failure during ingest processing (parse / persist / forward).
+ * 摄入处理过程中（解析 / 持久化 / 转发）发生的非受检异常。
  *
- * <p>Throwing this from inside the Kafka listener triggers Spring-Kafka's
- * retry + DLT path (wherever Stage F decides to wire it).  For Stage D we
- * simply let it bubble up, which causes the container to redeliver the
- * message -- safe because dedup is idempotent.
+ * <p>从 Kafka listener 内部抛出此异常，会触发 Spring-Kafka 的重试 + DLT 路径
+ * （Stage F 中可按需配置）。当前阶段仅让异常向上冒泡，容器会重投消息——
+ * 去重机制保证这是安全的幂等重放。
  */
 public class IngestException extends RuntimeException {
 

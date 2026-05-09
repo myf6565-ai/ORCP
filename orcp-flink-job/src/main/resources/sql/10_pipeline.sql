@@ -1,23 +1,22 @@
 -- =============================================================================
--- End-to-end pipeline: source -> dim lookup -> 1-min tumbling window -> sink.
+-- 端到端流水线：source -> 维表 lookup -> 1 分钟滚动窗口 -> sink。
 --
--- Shape note for anyone new to Flink SQL: windowing TVFs (TUMBLE, HOP, ...)
--- demote the time attribute of their input to a regular TIMESTAMP_LTZ in
--- their output.  That means:
---   * a temporal/lookup JOIN on FOR SYSTEM_TIME AS OF MUST happen BEFORE
---     the TUMBLE, while proc_time / event_time are still time attributes;
---   * after the TUMBLE we only have window_start / window_end timestamps,
---     which is exactly what the sink's primary key needs.
--- That's why this file creates a TEMPORARY VIEW first (enriched stream with
--- the dim column joined in) and then runs the windowed INSERT against it.
+-- 关于执行顺序的重要说明：
+--   窗口 TVF（TUMBLE、HOP 等）会将输入时间属性降级为普通 TIMESTAMP_LTZ，
+--   导致其输出列不再是时间属性。这意味着：
+--     * FOR SYSTEM_TIME AS OF proc_time 的时态/lookup JOIN 必须在 TUMBLE 之前执行，
+--       此时 proc_time 仍是时间属性；
+--     * TUMBLE 之后只剩 window_start / window_end 时间戳，这正是 sink 主键所需的。
+--   因此本文件先用 CREATE TEMPORARY VIEW 构建增强后的流（含维表 JOIN），
+--   再对该 VIEW 执行窗口聚合 INSERT。
 --
--- Left join so a missing customer row does NOT drop the event -- the
--- aggregate is still counted; only the dim enrichment is null.  For the
--- current agg we don't actually project any dim column, but the join is
--- preserved so Grafana drilldowns (Stage F+) can add level/region without
--- another pipeline deploy.
+-- 使用 LEFT JOIN 而非 INNER JOIN：
+--   维表缺失行时不丢弃事件——聚合仍计数，仅维表字段为 null。
+--   保留 JOIN（即使当前未投影 level/region）意味着阶段 F+ 可在
+--   Grafana 下钻时增加维度字段，而无需重新部署流水线。
 -- =============================================================================
 
+-- 第一步：维表 lookup JOIN，必须在 TUMBLE 之前完成。
 CREATE TEMPORARY VIEW enriched_events AS
 SELECT
     e.event_id,
@@ -31,6 +30,7 @@ FROM src_events AS e
 LEFT JOIN dim_customer FOR SYSTEM_TIME AS OF e.proc_time AS c
     ON e.customer_id = c.customer_id;
 
+-- 第二步：窗口聚合 + 写入 OceanBase。
 INSERT INTO sink_agg_1min
 SELECT
     window_start,
