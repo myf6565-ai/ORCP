@@ -1,118 +1,111 @@
-# ORCP Operations Runbook
+# ORCP 运维手册
 
-> Companion to [`DEV_SPEC.md`](./DEV_SPEC.md). Where DEV_SPEC defines *what*
-> was built, this document defines *how to run it*: first install, daily
-> lifecycle, and what to do when something breaks.
+> 本文档是 [`DEV_SPEC.md`](./DEV_SPEC.md) 的配套运维指南。DEV_SPEC 说明"构建了什么"，
+> 本文档说明"如何运行"：首次安装、日常运维，以及遇到问题时该怎么做。
 
-Every command assumes you are the `orcp` user (created by
-`deploy/centos/00_bootstrap.sh`) on the node where the command makes sense.
-`sudo` is passwordless for that user.
+所有命令均假设您以 `orcp` 用户身份（由 `deploy/centos/00_bootstrap.sh` 创建）
+在对应节点上执行。该用户已配置免密 `sudo`。
 
 ---
 
-## 0. Reference topology
+## 0. 参考拓扑
 
-The default 3-node layout from DEV_SPEC §3:
+DEV_SPEC §3 中的默认三节点布局：
 
-| Node     | Services                                                            |
-|----------|---------------------------------------------------------------------|
-| node-1   | ZooKeeper, Kafka broker, Flink JobManager, Nacos, MySQL (detail)    |
-| node-2   | ZooKeeper, Kafka broker, Flink TaskManager, Prometheus, Grafana     |
-| node-3   | ZooKeeper, Kafka broker, Flink TaskManager, orcp-ingest, orcp-admin |
-| OB       | OceanBase 3.2.3 (managed externally)                                |
+| 节点   | 服务                                                              |
+|--------|-------------------------------------------------------------------|
+| node-1 | ZooKeeper、Kafka broker、Flink JobManager、Nacos、MySQL（明细库） |
+| node-2 | ZooKeeper、Kafka broker、Flink TaskManager、Prometheus、Grafana   |
+| node-3 | ZooKeeper、Kafka broker、Flink TaskManager、orcp-ingest、orcp-admin |
+| OB     | OceanBase 3.2.3（外部托管）                                       |
 
-`cluster.env` on every node must set `NODE_ID`; otherwise the install
-scripts in `deploy/centos/` refuse to run.
+每个节点的 `cluster.env` 必须设置 `NODE_ID`，否则 `deploy/centos/` 中的安装脚本将拒绝运行。
 
 ---
 
-## 1. First install (cold bring-up)
+## 1. 首次安装（冷启动）
 
-Run each numbered step on the nodes listed. Stop and inspect if a step
-fails — they are designed to be rerunnable, but running 30 out of order
-will produce subtly wrong state.
+按顺序在对应节点执行每个步骤。如某步骤失败，请先排查再继续——
+这些脚本设计为可重复运行，但顺序错乱会导致状态不一致。
 
-### 1.1 Prepare every node
+### 1.1 初始化每个节点
 
 ```bash
-# On every node (node-1, node-2, node-3):
+# 在每个节点（node-1、node-2、node-3）上执行：
 sudo install -d /etc/orcp
 sudo cp deploy/centos/cluster.env.example /etc/orcp/cluster.env
-sudo vi /etc/orcp/cluster.env          # set NODE_ID per host
+sudo vi /etc/orcp/cluster.env          # 为每台主机设置 NODE_ID
 sudo bash deploy/centos/00_bootstrap.sh
 sudo bash deploy/centos/10_install_jdk8.sh
 ```
 
-`00_bootstrap.sh` creates the `orcp` user, raises `nofile`/`nproc`, turns
-off THP/swap, installs chrony, and writes `/etc/hosts` entries for all
-three nodes. `10_install_jdk8.sh` lays down Temurin 8u402-b06 under
-`/opt/jdk-8`.
+`00_bootstrap.sh` 创建 `orcp` 用户，提升 `nofile`/`nproc` 限制，
+关闭 THP/swap，安装 chrony，并为三个节点写入 `/etc/hosts` 条目。
+`10_install_jdk8.sh` 将 Temurin 8u402-b06 安装到 `/opt/jdk-8`。
 
-### 1.2 ZooKeeper + Kafka (every node)
+### 1.2 ZooKeeper + Kafka（每个节点）
 
 ```bash
 sudo bash deploy/centos/15_install_zookeeper.sh
 sudo bash deploy/centos/20_install_kafka_zk.sh
 ```
 
-`20_install_kafka_zk.sh` auto-creates `orcp.src.demo` and
-`orcp.mid.events` on node-1. Verify from any node:
+`20_install_kafka_zk.sh` 会在 node-1 上自动创建 `orcp.src.demo` 和
+`orcp.mid.events`。在任意节点验证：
 
 ```bash
 kafka-topics.sh --bootstrap-server node-1:9092 --list
-# expected: orcp.src.demo, orcp.mid.events, __consumer_offsets, __transaction_state
+# 期望看到：orcp.src.demo、orcp.mid.events、__consumer_offsets、__transaction_state
 ```
 
-### 1.3 Flink (every node)
+### 1.3 Flink（每个节点）
 
 ```bash
 sudo bash deploy/centos/30_install_flink.sh
 ```
 
-Role is decided by `NODE_ID`: 1 runs JobManager, 2+ run TaskManagers. The
-script copies `deploy/flink-conf/{flink-conf.yaml,log4j.properties,metrics.yaml}`
-into `/opt/flink/conf/` and drops the 4 third-party JARs into `/opt/flink/lib/`.
+角色由 `NODE_ID` 决定：1 运行 JobManager，2+ 运行 TaskManager。
+脚本将 `deploy/flink-conf/{flink-conf.yaml,log4j.properties,metrics.yaml}`
+复制到 `/opt/flink/conf/`，并将 4 个三方 JAR 放入 `/opt/flink/lib/`。
 
 ```bash
 curl -s http://node-1:8081/overview | python3 -m json.tool | head
-# expect: "flink-version": "1.17.2", "taskmanagers": >= 1
+# 期望看到："flink-version": "1.17.2", "taskmanagers": >= 1
 ```
 
-### 1.4 MySQL (node-1 only), OceanBase (external)
+### 1.4 MySQL（仅 node-1）和 OceanBase（外部）
 
 ```bash
-# node-1:
+# node-1：
 sudo bash deploy/centos/40_install_mysql.sh
 mysql -uroot -p < docs/SQL/mysql_detail_schema.sql
-# rotate the placeholder passwords right away:
-mysql -uroot -p -e "ALTER USER 'orcp_rw'@'%' IDENTIFIED BY '<real>';
-                    ALTER USER 'orcp_ro'@'%' IDENTIFIED BY '<real>'; FLUSH PRIVILEGES"
+# 立即修改占位密码：
+mysql -uroot -p -e "ALTER USER 'orcp_rw'@'%' IDENTIFIED BY '<真实密码>';
+                    ALTER USER 'orcp_ro'@'%' IDENTIFIED BY '<真实密码>'; FLUSH PRIVILEGES"
 ```
 
-For OceanBase, on any box with `obclient`:
+OceanBase 在任意装有 `obclient` 的机器上执行：
 
 ```bash
 obclient -h${OB_HOST} -P2881 -u"orcp_rw@tenant#cluster" -p < docs/SQL/oceanbase_dw_schema.sql
 obclient -h${OB_HOST} -P2881 -u"orcp_rw@tenant#cluster" -p -e "SHOW TABLES" orcp_dw
-# expect: agg_order_1min, agg_order_daily
+# 期望看到：agg_order_1min、agg_order_daily
 ```
 
-### 1.5 Nacos (node-1)
+### 1.5 Nacos（仅 node-1）
 
 ```bash
 sudo bash deploy/centos/50_install_nacos.sh
-curl -fsS http://node-1:8848/nacos/v1/console/health/readiness   # expect 200 OK
+curl -fsS http://node-1:8848/nacos/v1/console/health/readiness   # 期望返回 200 OK
 ```
 
-Log in at `http://node-1:8848/nacos` (default nacos/nacos), then:
+访问 `http://node-1:8848/nacos`（默认 nacos/nacos）登录后：
 
-1. Create namespace `dev` (or `prod`).
-2. Upload config `orcp-ingest.yaml` with the production MySQL + Kafka
-   endpoints and a real `datasource.password`.
-3. Upload config `orcp-admin.yaml` with the real `orcp.admin.password`,
-   OB credentials, and any webhook URL you wire later.
+1. 创建命名空间 `dev`（或 `prod`）。
+2. 上传配置 `orcp-ingest.yaml`，填入生产 MySQL + Kafka 端点及真实 `datasource.password`。
+3. 上传配置 `orcp-admin.yaml`，填入真实 `orcp.admin.password`、OB 凭据及后续配置的 webhook URL。
 
-### 1.6 Prometheus + Grafana (node-2)
+### 1.6 Prometheus + Grafana（仅 node-2）
 
 ```bash
 sudo bash deploy/centos/60_install_prom_grafana.sh
@@ -120,22 +113,22 @@ curl -fsS http://node-2:9090/-/ready      # Prometheus
 curl -fsS http://node-2:3000/api/health   # Grafana
 ```
 
-Now install the alert rules and dashboards:
+安装告警规则和看板：
 
 ```bash
-# node-2:
+# 在 node-2 上：
 sudo cp deploy/prometheus/orcp-alerts.yml /opt/prometheus/orcp-alerts.yml
 sudo bash -c "grep -q orcp-alerts.yml /opt/prometheus/prometheus.yml || \
     sed -i '/^scrape_configs:/i\\rule_files:\\n  - /opt/prometheus/orcp-alerts.yml\\n' \
     /opt/prometheus/prometheus.yml"
 sudo systemctl reload prometheus
 
-# Grafana: Dashboards -> Import -> paste deploy/grafana/orcp-overview-dashboard.json
+# Grafana：Dashboards -> Import -> 粘贴 deploy/grafana/orcp-overview-dashboard.json
 ```
 
-### 1.7 Build and deploy the Spring services
+### 1.7 构建并部署 Spring 服务
 
-From a developer workstation or the bastion:
+在开发者工作站或堡垒机上：
 
 ```bash
 make build
@@ -144,13 +137,11 @@ INGEST_HOST=node-3 make deploy-ingest
 ADMIN_HOST=node-3 make deploy-admin
 ```
 
-`deploy-systemd` copies the two `.service` units into
-`/etc/systemd/system/` and reloads. `deploy-ingest` / `deploy-admin` rsync
-the repackaged JARs into `/opt/orcp/{ingest,admin}/` and restart the
-service. The previous JAR is kept as `orcp-ingest.jar.bak` for a manual
-roll back.
+`deploy-systemd` 将两个 `.service` 单元文件复制到 `/etc/systemd/system/` 并重新加载。
+`deploy-ingest` / `deploy-admin` 将重新打包的 JAR rsync 到 `/opt/orcp/{ingest,admin}/` 并重启服务。
+上一个 JAR 保留为 `orcp-ingest.jar.bak`，可用于手动回滚。
 
-Before the first restart, on node-3:
+首次重启前，在 node-3 上：
 
 ```bash
 sudo install -d -o orcp -g orcp /etc/orcp
@@ -158,7 +149,7 @@ sudo install -m 0640 -o root -g orcp /dev/stdin /etc/orcp/ingest.env <<'EOF'
 KAFKA_BOOTSTRAP=node-1:9092,node-2:9092,node-3:9092
 MYSQL_URL=jdbc:mysql://node-1:3306/orcp_detail?useSSL=false&serverTimezone=Asia/Shanghai
 MYSQL_USER=orcp_rw
-MYSQL_PASSWORD=<real rw password>
+MYSQL_PASSWORD=<真实 rw 密码>
 NACOS_SERVER=node-1:8848
 NACOS_NAMESPACE=dev
 EOF
@@ -167,281 +158,259 @@ FLINK_REST=http://node-1:8081
 KAFKA_BOOTSTRAP=node-1:9092,node-2:9092,node-3:9092
 MYSQL_URL=jdbc:mysql://node-1:3306/orcp_detail?useSSL=false&serverTimezone=Asia/Shanghai
 MYSQL_USER=orcp_ro
-MYSQL_PASSWORD=<real ro password>
+MYSQL_PASSWORD=<真实 ro 密码>
 OB_URL=jdbc:mysql://ob-host:2881/orcp_dw?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
 OB_USER=orcp_rw@tenant#cluster
-OB_PASSWORD=<real ob password>
+OB_PASSWORD=<真实 ob 密码>
 ORCP_ADMIN_USER=orcp-admin
-ORCP_ADMIN_PASSWORD=<real admin password>
+ORCP_ADMIN_PASSWORD=<真实 admin 密码>
 NACOS_SERVER=node-1:8848
 NACOS_NAMESPACE=dev
 EOF
 ```
 
-`EnvironmentFile=` is set to `-/etc/orcp/*.env` (optional), so a missing
-file is not fatal but credentials WILL default to placeholders.
+`EnvironmentFile=` 设置为 `-/etc/orcp/*.env`（可选），缺失文件不影响启动，
+但凭据会使用占位默认值。
 
-### 1.8 Submit the Flink job
+### 1.8 提交 Flink 作业
 
 ```bash
-# Either path works.
-make submit-flink                              # uses scripts/submit_job.sh
-# -- OR via the admin service (exercises the REST control plane) --
+# 以下两种方式均可。
+make submit-flink                              # 调用 scripts/submit_job.sh
+# -- 或通过管控服务（同时验证 REST 控制面）--
 curl -u "${ORCP_ADMIN_USER}:${ORCP_ADMIN_PASSWORD}" \
      -F "jar=@orcp-flink-job/target/orcp-flink-job.jar" \
      -F "programArgs=--mysql.password ${MYSQL_PW} --ob.password ${OB_PW}" \
      http://node-3:8081/api/jobs/submit
 ```
 
-Then verify:
+验证：
 
 ```bash
 curl -s http://node-1:8081/jobs/overview | python3 -m json.tool
-# jobs[].state should say "RUNNING"
+# jobs[].state 应显示 "RUNNING"
 ```
 
 ---
 
-## 2. Daily operations
+## 2. 日常运维
 
-### 2.1 Lifecycle commands
+### 2.1 生命周期命令
 
-| Goal                           | Command                                             |
-|--------------------------------|-----------------------------------------------------|
-| cluster status one-liner       | `make status`                                       |
-| redeploy ingest                | `make deploy-ingest`                                |
-| redeploy admin                 | `make deploy-admin`                                 |
-| fresh Flink submit             | `make submit-flink`                                 |
-| planned Flink stop (savepoint) | `make cancel JOB=<id>`                              |
-| ad-hoc savepoint               | `make savepoint JOB=<id>`                           |
-| resume from savepoint          | `bash scripts/restore_from_savepoint.sh <path>`     |
-| test load (100 events)         | `make gen-events ARGS='--count 100'`                |
+| 目标 | 命令 |
+|------|------|
+| 集群状态一览 | `make status` |
+| 重部署 ingest | `make deploy-ingest` |
+| 重部署 admin | `make deploy-admin` |
+| 全新提交 Flink 作业 | `make submit-flink` |
+| 计划停止（带 savepoint） | `make cancel JOB=<id>` |
+| 临时触发 savepoint | `make savepoint JOB=<id>` |
+| 从 savepoint 恢复 | `bash scripts/restore_from_savepoint.sh <path>` |
+| 发送 100 条测试事件 | `make gen-events ARGS='--count 100'` |
 
-`cancel` and `savepoint` print the resulting savepoint path on stdout —
-pipe it straight into `restore_from_savepoint.sh`.
+`cancel` 和 `savepoint` 会在 stdout 输出 savepoint 路径，可直接管道给 `restore_from_savepoint.sh`。
 
-### 2.2 Via the admin service (requires Basic auth)
+### 2.2 通过管控服务操作（需 Basic 认证）
 
-All write endpoints are under `POST /api/jobs`, protected by the credentials
-you set in `/etc/orcp/admin.env`. Read-only endpoints like `/api/health`
-are anonymous so Prometheus can scrape them.
+所有写操作端点位于 `POST /api/jobs`，使用 `/etc/orcp/admin.env` 中设置的凭据保护。
+`/api/health` 等只读端点匿名开放，供 Prometheus 抓取。
 
 ```bash
-# Health aggregate (returns 200 UP or 503 DOWN):
+# 聚合健康检查（200 UP 或 503 DOWN）：
 curl -s http://node-3:8081/api/health | python3 -m json.tool
 
-# Jobs list (auth required):
+# 作业列表（需认证）：
 curl -u $USER:$PW http://node-3:8081/api/jobs | python3 -m json.tool
 
-# Submit (upload + run in one step):
+# 提交（上传 + 运行一步完成）：
 curl -u $USER:$PW \
      -F "jar=@orcp-flink-job/target/orcp-flink-job.jar" \
      http://node-3:8081/api/jobs/submit
 
-# Savepoint + stop:
+# 触发 savepoint 并停止：
 curl -u $USER:$PW -X POST \
      "http://node-3:8081/api/jobs/<jobId>/cancel?drain=false"
 ```
 
-### 2.3 Acceptance test
+### 2.3 验收测试
 
-Runs the §8.8 checklist end-to-end. Non-destructive by default; opt in to
-the destructive gates with flags:
+执行 §8.8 端到端验收清单。默认非破坏性；通过命令行参数启用破坏性验收门：
 
 ```bash
-bash scripts/acceptance_test.sh                    # gates 1, 3, 4
-INGEST_HOST=node-3 bash scripts/acceptance_test.sh # adds gate 3's restart
+bash scripts/acceptance_test.sh                    # 验收门 1、3、4
+INGEST_HOST=node-3 bash scripts/acceptance_test.sh # 增加门 3 的重启
 TM_HOST=node-3  bash scripts/acceptance_test.sh --with-self-heal
 JM_HOST=node-1  bash scripts/acceptance_test.sh --with-alerts
-bash scripts/acceptance_test.sh --all              # all five gates
+bash scripts/acceptance_test.sh --all              # 全部五个门
 ```
 
-Exit code 0 iff every selected gate PASSed. Fill
-[`docs/ACCEPTANCE_REPORT.md`](./ACCEPTANCE_REPORT.md) with the run output.
+所有选中验收门通过则退出码为 0。将运行结果填入
+[`docs/ACCEPTANCE_REPORT.md`](./ACCEPTANCE_REPORT.md)。
 
 ---
 
-## 3. Troubleshooting playbook
+## 3. 故障排查手册
 
-The symptom table maps the thing an on-call would see to the fastest
-diagnostic.
+下表将值班人员可能看到的症状映射到最快的排查路径。
 
-### 3.1 `OrcpFlinkJobDown` or `flink_jobmanager_job_uptime == 0`
+### 3.1 `OrcpFlinkJobDown` 或 `flink_jobmanager_job_uptime == 0`
 
 ```bash
-# 1. Is the JobManager process alive?
-sudo systemctl status flink-jobmanager      # on node-1
+# 1. JobManager 进程是否存活？
+sudo systemctl status flink-jobmanager      # 在 node-1 上
 
-# 2. Did the job fail because of an upstream (Kafka/MySQL/OB) outage?
+# 2. 作业是否因上游（Kafka/MySQL/OB）故障而失败？
 curl -s http://node-3:8081/api/health | python3 -m json.tool
 
-# 3. Tail the TaskManager log for the last exception:
+# 3. 查看 TaskManager 日志中的最后一个异常：
 sudo tail -200 /var/log/orcp/flink/flink-*-taskmanager-*.log | \
     grep -A5 -E 'ERROR|Caused by' | head -80
 ```
 
-If the job simply failed too many times and the restart strategy gave
-up, find the latest retained checkpoint and resume:
+如作业因重启次数耗尽已放弃，找到最新保留的检查点恢复：
 
 ```bash
 ls -lt /data/flink/checkpoints | head
 bash scripts/restore_from_savepoint.sh file:///data/flink/checkpoints/<id>/chk-<n>
 ```
 
-### 3.2 `OrcpFlinkJobRestartingRepeatedly` (flapping)
+### 3.2 `OrcpFlinkJobRestartingRepeatedly`（频繁重启）
 
-Three restarts in five minutes means the delay strategy is papering over
-a persistent error. Usual suspects:
+5 分钟内 3 次重启说明 fixed-delay 策略掩盖了持续性错误。常见原因：
 
-1. **Schema drift** — Stage D's `ForwardService` wire format changed but
-   the Flink SQL in `01_source_kafka.sql` wasn't updated. Symptom: log
-   contains `Failed to deserialize JSON field`.
-2. **OceanBase auth** — password rotated in Nacos but the Flink job was
-   submitted with the old value. Symptom: `Access denied for user
-   'orcp_rw'@'...'`.
-3. **MySQL connection pool exhausted** — the JDBC lookup cache is cold
-   and hammering MySQL. Verify with `SHOW PROCESSLIST` on node-1.
+1. **Schema 漂移** —— 阶段 D 的 `ForwardService` wire 格式已变更，但 `01_source_kafka.sql` 中的 Flink SQL 未同步更新。
+   症状：日志中出现 `Failed to deserialize JSON field`。
+2. **OceanBase 认证失败** —— Nacos 中密码已轮换，但 Flink 作业使用旧值提交。
+   症状：`Access denied for user 'orcp_rw'@'...'`。
+3. **MySQL 连接池耗尽** —— JDBC lookup 缓存冷启动，大量并发查 MySQL。
+   验证：在 node-1 上执行 `SHOW PROCESSLIST`。
 
-Cancel + resubmit with corrected params:
+取消后以正确参数重新提交：
 
 ```bash
-make cancel JOB=<id>        # prints a savepoint path
-make submit-flink           # re-reads job.properties / CLI args
+make cancel JOB=<id>        # 输出 savepoint 路径
+make submit-flink           # 重新读取 job.properties / CLI 参数
 ```
 
-### 3.3 `OrcpKafkaConsumerLagHigh` (> 10k pending records)
+### 3.3 `OrcpKafkaConsumerLagHigh`（积压 > 1 万条）
 
 ```bash
-# Where is the lag concentrated?
+# 找出积压集中在哪个分区：
 kafka-consumer-groups.sh --bootstrap-server node-1:9092 \
     --group orcp-flink-job --describe
 ```
 
-If one partition is far behind, likely a slow TaskManager. Check:
+如某分区明显落后，通常是某个 TaskManager 处理慢。检查：
 
-- `flink_taskmanager_Status_JVM_Memory_Heap_Used` — is a TM near OOM?
-- `flink_taskmanager_Status_JVM_CPU_Load` — is one CPU-bound?
+- `flink_taskmanager_Status_JVM_Memory_Heap_Used` —— 某 TM 是否接近 OOM？
+- `flink_taskmanager_Status_JVM_CPU_Load` —— 某 TM 是否 CPU 满载？
 
-Temporary mitigation: bump TaskManager count on node-2/node-3 (2+ more
-slots → 2+ more partitions can run in parallel).
+临时缓解：在 node-2/node-3 上增加 TaskManager 数量（多出 slot → 多个分区可并行处理）。
 
 ### 3.4 `OrcpIngestFailureRateHigh`
 
-`grep ERROR /var/log/orcp/orcp-ingest.log | head -20` almost always tells
-you. The three real causes seen in soak tests:
+`grep ERROR /var/log/orcp/orcp-ingest.log | head -20` 基本能直接定位原因。
+压测中遇到的三个真实原因：
 
-- MySQL is down → `CommunicationsException` → `/api/health` shows MySQL DOWN
-- Kafka broker bounced → `TimeoutException` on `forward()` — transient
-- `t_dedup` growing unbounded → disk on node-1 nearing full
+- MySQL 宕机 → `CommunicationsException` → `/api/health` 显示 MySQL DOWN
+- Kafka broker 重启 → `forward()` 抛出 `TimeoutException` —— 瞬时故障
+- `t_dedup` 不断增长 → node-1 磁盘即将打满
 
-The third one wants a cron entry on node-1 (not shipped — see §4.1).
+第三种情况需要在 node-1 上添加定时清理任务（参见 §4.1）。
 
-### 3.5 `/api/health` DOWN for OceanBase only
+### 3.5 `/api/health` 仅 OceanBase 显示 DOWN
 
 ```bash
-# Direct connectivity check from node-3 (where orcp-admin runs):
+# 从 node-3（orcp-admin 所在节点）直接验证连通性：
 mysql -h"${OB_HOST}" -P2881 -u"orcp_rw@tenant#cluster" -p"${OB_PW}" \
       -e "SELECT 1" orcp_dw
 ```
 
-Common reasons (from most to least frequent):
+常见原因（按频率排序）：
 
-1. Network — firewall between node-3 and OB lost the rule. Test with
-   `nc -zv ${OB_HOST} 2881`.
-2. Tenant user typo — user format is `user@tenant#cluster` for direct
-   port 2881, `user@tenant` for OBProxy port 2883. One `#` off and you
-   get `Access denied`.
-3. `serverTimezone=` missing from the JDBC URL — not a connectivity
-   issue but a driver-level one; the probe never actually reaches OB.
+1. 网络 —— node-3 到 OB 的防火墙规则丢失。用 `nc -zv ${OB_HOST} 2881` 测试。
+2. 租户用户格式错误 —— 直连 2881 端口使用 `user@tenant#cluster`，走 OBProxy 2883 端口使用 `user@tenant`。少一个 `#` 就会返回 `Access denied`。
+3. JDBC URL 缺少 `serverTimezone=` —— 不是网络问题，而是驱动层问题；探针实际上未到达 OB。
 
-### 3.6 Ingest keeps redelivering the same message
+### 3.6 摄入持续重投相同消息
 
-The dedup layer is doing its job if the event is logged as
-`eventId already present in t_dedup, skipping`. If you see a *real*
-replay (i.e. the event does land in `t_order` twice), it is one of:
+如事件日志中出现 `eventId already present in t_dedup, skipping`，说明去重层工作正常。
+如果发现 `t_order` 出现**真实重复行**（即同一事件写入两次），可能原因：
 
-- `t_dedup.event_id` is not actually the primary key on OB side. Check:
-  `SHOW CREATE TABLE orcp_detail.t_dedup` — `PRIMARY KEY (event_id)`
-  must be present.
-- The Caffeine cache is masking the DB check — not a correctness issue
-  on its own, but if the DB primary key is missing the cache gives you
-  probabilistic dedup only.
+- `t_dedup.event_id` 在 OB 侧并非真正主键。验证：
+  `SHOW CREATE TABLE orcp_detail.t_dedup` —— 必须包含 `PRIMARY KEY (event_id)`。
+- Caffeine 缓存掩盖了 DB 查询 —— 单独来看不影响正确性，但如果 DB 主键缺失，缓存只能提供概率去重。
 
 ---
 
-## 4. Maintenance
+## 4. 日常维护
 
-### 4.1 Retention
+### 4.1 数据保留策略
 
-| Thing                          | Default                    | Controlled by                      |
-|--------------------------------|----------------------------|------------------------------------|
-| Kafka topic data               | 72 hours                   | `log.retention.hours` in Kafka cfg |
-| Flink checkpoints              | RETAIN_ON_CANCELLATION     | `flink-conf.yaml`                  |
-| `t_dedup`                      | 7 days (manual cleanup)    | run the SQL below from cron        |
-| Service logs `/var/log/orcp/*` | 14 days, 500MB cap         | logback-spring.xml, rolling policy |
+| 数据 | 默认保留 | 控制方式 |
+|------|----------|----------|
+| Kafka topic 数据 | 72 小时 | Kafka 配置中的 `log.retention.hours` |
+| Flink 检查点 | 取消时保留 | `flink-conf.yaml` |
+| `t_dedup` | 7 天（手动清理） | 在 node-1 定期运行下方 SQL |
+| 服务日志 `/var/log/orcp/*` | 14 天、500MB 上限 | logback-spring.xml 滚动策略 |
 
-The only missing piece is `t_dedup`. On node-1 as the MySQL admin:
+唯一需要手动处理的是 `t_dedup`，在 node-1 以 MySQL admin 身份执行：
 
 ```sql
--- Nightly via cron or a scheduled event:
+-- 通过 cron 或 MySQL 事件调度每日执行：
 DELETE FROM orcp_detail.t_dedup WHERE created_at < NOW() - INTERVAL 7 DAY LIMIT 10000;
 ```
 
-`LIMIT` keeps the lock window small on a busy table.
+`LIMIT` 可控制繁忙表上的锁窗口大小。
 
-### 4.2 Password rotation
+### 4.2 密码轮换
 
-Nacos is the source of truth. Update `orcp-ingest.yaml` or
-`orcp-admin.yaml` in Nacos, then restart the affected service(s):
+Nacos 是配置的权威来源。在 Nacos 中更新 `orcp-ingest.yaml` 或 `orcp-admin.yaml`，
+然后重启对应服务：
 
 ```bash
-sudo systemctl restart orcp-ingest       # on node-3
-sudo systemctl restart orcp-admin        # on node-3
+sudo systemctl restart orcp-ingest       # 在 node-3 上
+sudo systemctl restart orcp-admin        # 在 node-3 上
 ```
 
-The Flink job reads its passwords from `programArgs` at submit time, so
-rotating the OB password also requires `make cancel JOB=<id>` + fresh
-`make submit-flink` with the new value.
+Flink 作业的密码通过提交时的 `programArgs` 注入，因此轮换 OB 密码还需要：
+`make cancel JOB=<id>` + 以新密码重新执行 `make submit-flink`。
 
-### 4.3 Version upgrades
+### 4.3 版本升级
 
-Component upgrades change a single line in the root `pom.xml` (for Java
-deps) or the `deploy/centos/*_install_*.sh` scripts (for infra). The
-version matrix in `DEV_SPEC.md` §2 is the definition of record.
+Java 依赖升级只需修改根 `pom.xml` 中的一行；基础设施升级修改对应的 `deploy/centos/*_install_*.sh` 脚本。
+`DEV_SPEC.md` §2 中的版本矩阵是变更的权威定义。
 
-Upgrade order when bumping everything together:
+整体升级顺序：
 
-1. ZooKeeper — rolling, one node at a time.
-2. Kafka brokers — rolling.
-3. Flink — stop the job with savepoint, upgrade JM + TMs, resume from
-   savepoint. Run the acceptance test afterwards.
-4. Spring services — `make deploy-ingest` / `deploy-admin` restart in
-   place.
+1. ZooKeeper —— 滚动升级，一次一个节点。
+2. Kafka broker —— 滚动升级。
+3. Flink —— 先用 savepoint 停止作业，升级 JM + TM，再从 savepoint 恢复。之后运行验收测试。
+4. Spring 服务 —— `make deploy-ingest` / `deploy-admin` 原地重启。
 
 ---
 
-## 5. On-call cheat sheet (printable)
+## 5. 值班速查卡（可打印）
 
 ```
-HEALTH                   curl -s http://node-3:8081/api/health | jq .status
-FLINK UI                 http://node-1:8081
-GRAFANA                  http://node-2:3000        (admin/admin first login)
-ALERTMANAGER             http://node-2:9093
-NACOS                    http://node-1:8848/nacos  (nacos/nacos default)
+健康检查                  curl -s http://node-3:8081/api/health | jq .status
+Flink UI                 http://node-1:8081
+Grafana                  http://node-2:3000        （首次登录 admin/admin，请立即修改）
+Alertmanager             http://node-2:9093
+Nacos                    http://node-1:8848/nacos  （默认 nacos/nacos）
 
-JOB LIST                 curl -s $FLINK_REST/jobs/overview | jq
-CURRENT SAVEPOINT        make savepoint JOB=<id>
-CANCEL + SAVEPOINT       make cancel  JOB=<id>
-RESUME                   bash scripts/restore_from_savepoint.sh <path>
+作业列表                  curl -s $FLINK_REST/jobs/overview | jq
+触发 savepoint            make savepoint JOB=<id>
+取消 + savepoint          make cancel JOB=<id>
+从 savepoint 恢复         bash scripts/restore_from_savepoint.sh <path>
 
-INGEST LOGS              tail -f /var/log/orcp/orcp-ingest.log       (node-3)
-ADMIN LOGS               tail -f /var/log/orcp/orcp-admin.log        (node-3)
-FLINK JM LOG             tail -f /var/log/orcp/flink/flink-*-jobmanager-*.log   (node-1)
+摄入日志                  tail -f /var/log/orcp/orcp-ingest.log       （node-3）
+管控日志                  tail -f /var/log/orcp/orcp-admin.log        （node-3）
+Flink JM 日志             tail -f /var/log/orcp/flink/flink-*-jobmanager-*.log  （node-1）
 
-ACCEPTANCE (safe)        bash scripts/acceptance_test.sh
-ACCEPTANCE (all)         TM_HOST=node-3 JM_HOST=node-1 INGEST_HOST=node-3 \
+验收测试（安全）          bash scripts/acceptance_test.sh
+验收测试（完整）          TM_HOST=node-3 JM_HOST=node-1 INGEST_HOST=node-3 \
                           bash scripts/acceptance_test.sh --all
 ```
 
-That is the whole thing. Anything not covered above is a bug in this
-document — file it as a PR against `docs/OPS_RUNBOOK.md`.
+以上涵盖了全部内容。如有遗漏，请作为 Bug 提 PR 到 `docs/OPS_RUNBOOK.md`。
