@@ -1,0 +1,25 @@
+[Unit]
+Description=Apache Kafka (ORCP, ZooKeeper mode)
+Documentation=https://kafka.apache.org/
+Requires=network-online.target
+After=network-online.target zookeeper.service
+
+[Service]
+Type=simple
+User=orcp
+Group=orcp
+Environment=JAVA_HOME=/opt/jdk-8
+Environment=LOG_DIR=/var/log/orcp/kafka
+# Heap: keep headroom for page cache; override per host if the node has a lot of RAM.
+Environment="KAFKA_HEAP_OPTS=-Xms2G -Xmx2G"
+Environment="KAFKA_JVM_PERFORMANCE_OPTS=-server -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:+ExplicitGCInvokesConcurrent -Djava.awt.headless=true"
+ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties
+ExecStop=/opt/kafka/bin/kafka-server-stop.sh
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=655360
+LimitNPROC=655360
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

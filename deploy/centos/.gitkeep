@@ -1,5 +1,0 @@
-# CentOS bootstrap scripts are delivered in Stage B.
-# Planned contents: 00_bootstrap.sh, 10_install_jdk8.sh, 15_install_zookeeper.sh,
-# 20_install_kafka_zk.sh, 30_install_flink.sh, 40_install_mysql.sh,
-# 50_install_nacos.sh, 60_install_prom_grafana.sh, 99_healthcheck.sh.
-# See docs/DEV_SPEC.md section 5.

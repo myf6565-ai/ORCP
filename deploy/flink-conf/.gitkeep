@@ -1,3 +1,0 @@
-# Flink cluster configuration is delivered in Stage B.
-# Planned: flink-conf.yaml, log4j.properties, metrics.yaml.
-# See docs/DEV_SPEC.md section 5.5.

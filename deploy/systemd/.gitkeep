@@ -1,3 +1,0 @@
-# systemd unit files are delivered in Stage B.
-# Planned: zookeeper.service, kafka.service, flink-jobmanager.service,
-# flink-taskmanager.service, nacos.service, orcp-ingest.service, orcp-admin.service.

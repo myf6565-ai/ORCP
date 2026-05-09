@@ -1,0 +1,32 @@
+#=============================================================================
+# ORCP Flink metrics reference (documentation only).
+#
+# The Prometheus reporter is actually enabled by the metrics.reporter.prom.*
+# keys in flink-conf.yaml -- Flink does not read this file directly. It is
+# kept in deploy/flink-conf/ so operators have a single place to see which
+# metrics/labels the Grafana dashboards depend on.
+#
+# Scrape targets (see deploy/centos/60_install_prom_grafana.sh):
+#   flink job  -> node-1..N : 9250-9260  (HTTP, plain text /metrics)
+#
+# Expected metric families (partial):
+#   flink_jobmanager_job_uptime                    gauge
+#   flink_jobmanager_job_numRestarts_total         counter
+#   flink_jobmanager_job_lastCheckpointDuration    gauge
+#   flink_jobmanager_job_lastCheckpointSize        gauge
+#   flink_taskmanager_job_task_numRecordsIn        counter
+#   flink_taskmanager_job_task_numRecordsOut       counter
+#   flink_taskmanager_Status_JVM_Memory_*          gauge
+#
+# Alert rules referenced in DEV_SPEC §8.6:
+#   - flink_jobmanager_job_uptime == 0 for 2m
+#   - increase(flink_jobmanager_job_numRestarts_total[5m]) > 3
+#=============================================================================
+reporters:
+  - id: prom
+    factory: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+    port: 9250-9260
+
+scrape:
+  prometheus_job: flink
+  endpoint_per_jvm: /metrics

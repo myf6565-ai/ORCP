@@ -1,0 +1,24 @@
+[Unit]
+Description=Apache ZooKeeper (ORCP)
+Documentation=https://zookeeper.apache.org/
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=orcp
+Group=orcp
+Environment=JAVA_HOME=/opt/jdk-8
+Environment=ZOO_LOG_DIR=/var/log/orcp/zookeeper
+Environment=ZOO_LOG4J_PROP=INFO,ROLLINGFILE
+# zkServer.sh in foreground mode: exec the JVM directly so systemd tracks it.
+ExecStart=/opt/zookeeper/bin/zkServer.sh start-foreground /opt/zookeeper/conf/zoo.cfg
+ExecStop=/opt/zookeeper/bin/zkServer.sh stop /opt/zookeeper/conf/zoo.cfg
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=655360
+LimitNPROC=655360
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

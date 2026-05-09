@@ -1,0 +1,28 @@
+[Unit]
+Description=Nacos Server (ORCP, standalone)
+Documentation=https://nacos.io/
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+# nacos startup.sh forks a background JVM and writes its pid file,
+# so we supervise it in forking mode.
+Type=forking
+PIDFile=/opt/nacos/bin/nacos.pid
+User=orcp
+Group=orcp
+Environment=JAVA_HOME=/opt/jdk-8
+Environment=BASE_DIR=/opt/nacos
+Environment=MODE=standalone
+Environment="JAVA_OPT=-Xms1g -Xmx1g -Xmn512m"
+ExecStart=/opt/nacos/bin/startup.sh -m standalone
+ExecStop=/opt/nacos/bin/shutdown.sh
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=655360
+LimitNPROC=655360
+TimeoutStartSec=120
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target
