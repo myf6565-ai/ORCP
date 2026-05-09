@@ -52,12 +52,14 @@
         <mybatis-plus.version>3.5.5</mybatis-plus.version>
 
         <!-- Utilities -->
-        <lombok.version>1.18.30</lombok.version>
+        <lombok.version>1.18.40</lombok.version>
         <caffeine.version>2.9.3</caffeine.version>
         <jasypt.version>3.0.5</jasypt.version>
         <okhttp.version>4.12.0</okhttp.version>
         <commons-lang3.version>3.12.0</commons-lang3.version>
         <commons-io.version>2.11.0</commons-io.version>
+        <!-- 6.x is the last line that compiles and runs on JDK 8; 7+ requires Java 11. -->
+        <logstash-logback-encoder.version>6.6</logstash-logback-encoder.version>
 
         <!-- Plugins -->
         <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
@@ -206,6 +208,11 @@
                 <artifactId>commons-io</artifactId>
                 <version>${commons-io.version}</version>
             </dependency>
+            <dependency>
+                <groupId>net.logstash.logback</groupId>
+                <artifactId>logstash-logback-encoder</artifactId>
+                <version>${logstash-logback-encoder.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -223,6 +230,25 @@
                         <compilerArgs>
                             <arg>-parameters</arg>
                         </compilerArgs>
+                        <!--
+                            Lombok must be listed as an annotation
+                            processor explicitly.  Maven's automatic
+                            classpath-based discovery still works on JDK 8,
+                            but Lombok 1.18.x's own javac patcher will
+                            silently no-op when it cannot identify the
+                            compiler internals (it prints no warning at
+                            all).  Declaring the path here keeps the build
+                            deterministic regardless of the developer's
+                            JDK: in CI or locally the @Data / @Slf4j
+                            getters always get generated.
+                        -->
+                        <annotationProcessorPaths>
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                                <version>${lombok.version}</version>
+                            </path>
+                        </annotationProcessorPaths>
                     </configuration>
                 </plugin>
                 <plugin>

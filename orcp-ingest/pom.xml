@@ -78,6 +78,12 @@
             <artifactId>caffeine</artifactId>
         </dependency>
 
+        <!-- JSON logs -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

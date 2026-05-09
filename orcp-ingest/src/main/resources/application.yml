@@ -1,10 +1,59 @@
-# Static fallback configuration. Runtime values (Kafka / DB endpoints,
-# credentials) should be overridden by the Nacos data-id
-# "orcp-ingest.yaml" in Stage D.
+# Static fallback configuration.  Runtime values (Kafka / DB endpoints,
+# credentials) are overridden by the Nacos data-id "orcp-ingest.yaml" at
+# bootstrap -- see bootstrap.yml.
+#
+# Environment variables take precedence over the defaults below so that the
+# systemd unit in Stage F can inject cluster-specific values without a
+# redeploy.
 
 server:
   port: 8080
   shutdown: graceful
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:node-1:9092,node-2:9092,node-3:9092}
+    consumer:
+      group-id: orcp-ingest
+      enable-auto-commit: false
+      max-poll-records: 500
+      auto-offset-reset: earliest
+      properties:
+        isolation.level: read_committed
+    listener:
+      ack-mode: MANUAL_IMMEDIATE
+      concurrency: 3
+    producer:
+      acks: all
+      retries: 10
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        linger.ms: 5
+
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://node-1:3306/orcp_detail?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8mb4&rewriteBatchedStatements=true}
+    username: ${MYSQL_USER:orcp_rw}
+    password: ${MYSQL_PASSWORD:ChangeMe_rw_1!}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 5000
+      max-lifetime: 900000
+      pool-name: orcp-ingest-hikari
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    banner: false
+    db-config:
+      id-type: input
 
 management:
   endpoints:
@@ -18,40 +67,11 @@ management:
     tags:
       application: ${spring.application.name}
 
-spring:
-  lifecycle:
-    timeout-per-shutdown-phase: 30s
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP:node-1:9092,node-2:9092,node-3:9092}
-    consumer:
-      group-id: orcp-ingest
-      enable-auto-commit: false
-      max-poll-records: 500
-      properties:
-        isolation.level: read_committed
-    listener:
-      ack-mode: MANUAL_IMMEDIATE
-      concurrency: 3
-    producer:
-      acks: all
-      retries: 10
-      properties:
-        enable.idempotence: true
-        max.in.flight.requests.per.connection: 5
-  datasource:
-    url: ${MYSQL_URL:jdbc:mysql://node-1:3306/orcp_detail?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8mb4}
-    username: ${MYSQL_USER:orcp_rw}
-    password: ${MYSQL_PASSWORD:changeme}
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
-      connection-timeout: 5000
-
 orcp:
   kafka:
     src-topic: ${ORCP_SRC_TOPIC:orcp.src.demo}
-    mid-topic: orcp.mid.events
+    mid-topic: ${ORCP_MID_TOPIC:orcp.mid.events}
+    send-timeout-seconds: 10
   dedup:
     caffeine-max-size: 10000
     caffeine-ttl-minutes: 10
