@@ -1,0 +1,98 @@
+# Prometheus alert rules for ORCP.  Copy to the Prometheus rules dir and
+# reference from prometheus.yml:
+#
+#   rule_files:
+#     - /opt/prometheus/rules/orcp-alerts.yml
+#
+# Alert thresholds come from DEV_SPEC §8.6.  Keep the 'for' durations long
+# enough to survive normal restarts: we want alerts on real outages, not
+# rolling deploys.
+
+groups:
+  - name: orcp.flink
+    interval: 30s
+    rules:
+      # Flink job not running for 2 minutes.  The flink_jobmanager_job_uptime
+      # metric reports uptime in ms while the job is alive and drops to 0
+      # the instant the job fails.  A healthy job climbs monotonically.
+      - alert: OrcpFlinkJobDown
+        expr: flink_jobmanager_job_uptime == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: orcp-flink
+        annotations:
+          summary: "Flink job {{ $labels.job_name }} is not running"
+          description: |
+            The Flink job {{ $labels.job_name }} reports uptime=0 for 2+ minutes.
+            Check the JobManager: http://{{ $labels.instance }}:8081/jobs/overview
+
+      # Too many restarts in a short window usually means a non-transient
+      # failure that fixed-delay is just masking.
+      - alert: OrcpFlinkJobRestartingRepeatedly
+        expr: increase(flink_jobmanager_job_numRestarts_total[5m]) > 3
+        for: 0m
+        labels:
+          severity: warning
+          service: orcp-flink
+        annotations:
+          summary: "Flink job {{ $labels.job_name }} restarted > 3 times in 5m"
+          description: |
+            More than 3 restarts for job {{ $labels.job_name }} in the last 5 minutes.
+            Likely a persistent error (schema mismatch, DB connectivity, ...).
+
+  - name: orcp.kafka
+    interval: 30s
+    rules:
+      # Consumer lag threshold per DEV_SPEC §8.6.  Kafka exposes lag as
+      # flink_taskmanager_job_task_operator_currentFetchEventTimeLag for
+      # Flink consumers; if you later wire in kafka_exporter this can
+      # target kafka_consumergroup_lag instead.
+      - alert: OrcpKafkaConsumerLagHigh
+        expr: max by (job_name) (flink_taskmanager_job_task_operator_pendingRecords) > 10000
+        for: 5m
+        labels:
+          severity: warning
+          service: orcp-kafka
+        annotations:
+          summary: "Flink consumer lag on {{ $labels.job_name }} > 10k records"
+          description: |
+            The Kafka source for job {{ $labels.job_name }} has more than
+            10,000 pending records for 5+ minutes.  Check producer rate
+            vs. TaskManager slot count.
+
+  - name: orcp.spring
+    interval: 30s
+    rules:
+      - alert: OrcpSpringServiceDown
+        expr: up{job="orcp-spring"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: orcp-spring
+        annotations:
+          summary: "Spring service {{ $labels.instance }} is down"
+          description: |
+            Prometheus cannot scrape {{ $labels.instance }} ({{ $labels.job }})
+            for 1+ minute.  Check: systemctl status orcp-ingest orcp-admin
+
+      # OceanBase write failure ratio exceeds 1%.  orcp-ingest exports
+      # orcp_ingest_persisted_total (success) and the Flink job's JDBC
+      # sink exports flink_jobmanager_job_numFailedWriteRecords; here we
+      # look at the ingest side.  Tune the metric name if your dashboards
+      # pick different aliases.
+      - alert: OrcpIngestFailureRateHigh
+        expr: |
+          rate(orcp_ingest_persisted_total{result="failed"}[5m])
+            /
+          rate(orcp_ingest_received_total[5m])
+            > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          service: orcp-ingest
+        annotations:
+          summary: "orcp-ingest failure rate > 1% over 5m"
+          description: |
+            More than 1% of received events are failing to persist/forward.
+            Inspect orcp-ingest logs at /var/log/orcp/orcp-ingest.log.

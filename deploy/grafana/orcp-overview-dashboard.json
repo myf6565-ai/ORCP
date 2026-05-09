@@ -1,0 +1,100 @@
+{
+  "title": "ORCP end-to-end overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "timezone": "Asia/Shanghai",
+  "refresh": "30s",
+  "tags": ["orcp", "flink", "kafka", "oceanbase"],
+  "time": { "from": "now-30m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" },
+        "hide": 0,
+        "label": "Data source"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Ingest throughput (events/s)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(orcp_ingest_received_total[1m]))",  "legendFormat": "received",  "refId": "A" },
+        { "expr": "sum(rate(orcp_ingest_persisted_total[1m]))", "legendFormat": "persisted", "refId": "B" },
+        { "expr": "sum(rate(orcp_ingest_duplicate_total[1m]))", "legendFormat": "duplicate", "refId": "C" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Ingest parse errors (/min)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "sum(increase(orcp_ingest_parseError_total[1m]))", "legendFormat": "parse errors", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Flink job state",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "flink_jobmanager_job_uptime", "legendFormat": "{{job_name}}", "refId": "A" }
+      ],
+      "options": { "reduceOptions": { "calcs": ["last"] } }
+    },
+    {
+      "id": 4,
+      "title": "Flink restarts (last 5m)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "targets": [
+        { "expr": "sum(increase(flink_jobmanager_job_numRestarts_total[5m]))", "legendFormat": "restarts", "refId": "A" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Checkpoint duration (last)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "flink_jobmanager_job_lastCheckpointDuration", "legendFormat": "ms", "refId": "A" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "JVM memory (ingest + admin)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "jvm_memory_used_bytes{job=\"orcp-spring\",area=\"heap\"}", "legendFormat": "{{instance}} heap", "refId": "A" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Ingest processing time P95",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(orcp_ingest_processingTime_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

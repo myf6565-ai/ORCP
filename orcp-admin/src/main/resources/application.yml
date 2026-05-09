@@ -1,6 +1,22 @@
+# Static fallback configuration.  Runtime values (Flink REST, Kafka,
+# MySQL, OceanBase, admin credentials) are overridden by the Nacos
+# data-id "orcp-admin.yaml" at bootstrap -- see bootstrap.yml.
+#
+# Environment variables take precedence over the defaults below so the
+# systemd unit can inject cluster-specific values without a redeploy.
+
 server:
   port: 8081
   shutdown: graceful
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  servlet:
+    multipart:
+      # Flink fat jars are ~25MB; allow headroom.
+      max-file-size: 256MB
+      max-request-size: 256MB
 
 management:
   endpoints:
@@ -10,17 +26,33 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}
 
 orcp:
+  admin:
+    username: ${ORCP_ADMIN_USER:orcp-admin}
+    password: ${ORCP_ADMIN_PASSWORD:ChangeMe_admin_1!}
   flink:
     rest-url: ${FLINK_REST:http://node-1:8081}
+    connect-timeout-ms: 3000
+    read-timeout-ms: 30000
+    write-timeout-ms: 120000
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:node-1:9092,node-2:9092,node-3:9092}
+    probe-timeout-ms: 2000
   mysql:
     url: ${MYSQL_URL:jdbc:mysql://node-1:3306/orcp_detail?useSSL=false&serverTimezone=Asia/Shanghai}
     user: ${MYSQL_USER:orcp_ro}
-    password: ${MYSQL_PASSWORD:changeme}
+    password: ${MYSQL_PASSWORD:ChangeMe_ro_1!}
+    probe-timeout-seconds: 2
   oceanbase:
-    url: ${OB_URL:jdbc:oceanbase://ob-host:2883/orcp_dw?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    url: ${OB_URL:jdbc:mysql://ob-host:2881/orcp_dw?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
     user: ${OB_USER:orcp_rw@tenant#cluster}
-    password: ${OB_PASSWORD:changeme}
+    password: ${OB_PASSWORD:ChangeMe_ob_1!}
+    probe-timeout-seconds: 3
+  job:
+    default-entry-class: com.orcp.flink.OrcpFlinkJob
+    default-parallelism: 2
+    savepoint-dir: ${FLINK_SAVEPOINT_DIR:file:///data/flink/savepoints}
