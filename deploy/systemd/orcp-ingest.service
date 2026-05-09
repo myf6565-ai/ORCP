@@ -1,0 +1,35 @@
+[Unit]
+Description=ORCP Ingest Service (Spring Boot, Kafka -> MySQL)
+Documentation=file:///opt/orcp/docs/DEV_SPEC.md
+Requires=network-online.target
+After=network-online.target kafka.service
+
+[Service]
+Type=simple
+User=orcp
+Group=orcp
+WorkingDirectory=/opt/orcp/ingest
+Environment=JAVA_HOME=/opt/jdk-8
+Environment=ORCP_LOG_HOME=/var/log/orcp
+Environment=SPRING_PROFILES_ACTIVE=prod
+# -Xms matches -Xmx to keep the footprint predictable under systemd cgroup limits.
+Environment="JAVA_OPTS=-Xms1g -Xmx1g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Dfile.encoding=UTF-8"
+
+# /etc/orcp/ingest.env holds node-specific overrides: KAFKA_BOOTSTRAP, MYSQL_URL,
+# ORCP_SRC_TOPIC, etc.  Create it out of /etc/orcp/ingest.env.example (not
+# shipped here) and keep it 0640 root:orcp.  Missing file is NOT fatal --
+# the application has sane defaults for dev.
+EnvironmentFile=-/etc/orcp/ingest.env
+
+ExecStart=/opt/jdk-8/bin/java $JAVA_OPTS -jar /opt/orcp/ingest/orcp-ingest.jar
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+# -15 gives the embedded Kafka consumer time to flush before the JVM dies.
+KillSignal=SIGTERM
+
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

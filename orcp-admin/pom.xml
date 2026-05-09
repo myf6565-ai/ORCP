@@ -34,17 +34,25 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-openfeign</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- Kafka admin client -->
+        <!-- Kafka admin client for the health probe. We don't need the full
+             spring-kafka stack here; just the raw AdminClient. -->
         <dependency>
             <groupId>org.apache.kafka</groupId>
             <artifactId>kafka-clients</artifactId>
         </dependency>
 
-        <!-- JDBC drivers for health probes -->
+        <!-- JDBC drivers for MySQL + OceanBase health probes. We intentionally
+             do NOT depend on spring-boot-starter-jdbc or HikariCP here; two
+             hand-built connection-per-check DataSources keep the footprint
+             small and avoid tangling with Spring Boot's autoconfigure. -->
         <dependency>
             <groupId>mysql</groupId>
             <artifactId>mysql-connector-java</artifactId>
@@ -54,7 +62,7 @@
             <artifactId>oceanbase-client</artifactId>
         </dependency>
 
-        <!-- Nacos -->
+        <!-- Nacos discovery + config -->
         <dependency>
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
@@ -74,10 +82,17 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
 
-        <!-- Flink REST client via OkHttp -->
+        <!-- Flink REST client over OkHttp: multipart upload + JSON bodies
+             without dragging in a second HTTP framework. -->
         <dependency>
             <groupId>com.squareup.okhttp3</groupId>
             <artifactId>okhttp</artifactId>
+        </dependency>
+
+        <!-- JSON logs (same contract as orcp-ingest). -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
         </dependency>
 
         <dependency>
