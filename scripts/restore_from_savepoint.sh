@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
-# Stage E+ : restart a job by pointing to a savepoint path.
+#
+# Re-submits the job starting from a savepoint.  Thin wrapper that exports
+# SAVEPOINT_PATH and delegates to submit_job.sh, which handles the upload +
+# run REST calls.
+#
+# Usage:  restore_from_savepoint.sh <savepoint-path>
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC1091
-source "${SCRIPT_DIR}/env.sh"
 
 SAVEPOINT_PATH="${1:-}"
 if [[ -z "${SAVEPOINT_PATH}" ]]; then
     echo "usage: $0 <savepoint-path>" >&2
+    echo "example: $0 file:///data/flink/savepoints/savepoint-abc123" >&2
     exit 1
 fi
-echo "[restore] TODO Stage E: POST ${FLINK_REST}/jars/<id>/run savepointPath=${SAVEPOINT_PATH}"
-exit 0
+
+export SAVEPOINT_PATH
+echo "[restore] delegating to submit_job.sh with SAVEPOINT_PATH=${SAVEPOINT_PATH}"
+exec "${SCRIPT_DIR}/submit_job.sh"
